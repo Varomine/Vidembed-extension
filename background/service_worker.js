@@ -1,8 +1,9 @@
-// VidEmbed Background Service Worker - Enhanced with Extension Blocking & CORS
+// VidEmbed Background Service Worker - Advanced Referer Spoofing & Network Interceptor
 
 const tabMediaMap = new Map();
+const urlRefererMap = new Map();
 
-// Default blocked file extensions (e.g., ignore .ts chunk noise when m3u8 is present)
+// Default blocked file extensions
 let blockedExtensions = ['.ts', '.m4s', '.key', '.vtt', '.srt'];
 
 // Sync blocked extensions from chrome storage
@@ -20,11 +21,11 @@ chrome.storage.onChanged.addListener((changes) => {
   }
 });
 
-// Setup Declarative Net Request Rules to Bypass CORS restrictions
+// Setup Initial Declarative Net Request Rules for CORS
 function setupCORSRules() {
   if (chrome.declarativeNetRequest && chrome.declarativeNetRequest.updateSessionRules) {
     chrome.declarativeNetRequest.updateSessionRules({
-      removeRuleIds: [1001, 1002],
+      removeRuleIds: [1001],
       addRules: [
         {
           id: 1001,
@@ -51,6 +52,68 @@ function setupCORSRules() {
 setupCORSRules();
 chrome.runtime.onInstalled.addListener(setupCORSRules);
 chrome.runtime.onStartup.addListener(setupCORSRules);
+
+// Dynamic Referer & Origin Spoofing Rule
+function applyRefererRule(refererUrl) {
+  if (!refererUrl || !chrome.declarativeNetRequest || !chrome.declarativeNetRequest.updateSessionRules) return;
+
+  try {
+    const origin = new URL(refererUrl).origin;
+    chrome.declarativeNetRequest.updateSessionRules({
+      removeRuleIds: [2001],
+      addRules: [
+        {
+          id: 2001,
+          priority: 10,
+          action: {
+            type: 'modifyHeaders',
+            requestHeaders: [
+              { header: 'Referer', operation: 'set', value: refererUrl },
+              { header: 'Origin', operation: 'set', value: origin }
+            ],
+            responseHeaders: [
+              { header: 'access-control-allow-origin', operation: 'set', value: '*' },
+              { header: 'access-control-allow-methods', operation: 'set', value: 'GET, POST, OPTIONS, HEAD' },
+              { header: 'access-control-allow-headers', operation: 'set', value: '*' }
+            ]
+          },
+          condition: {
+            urlFilter: '*',
+            resourceTypes: ['xmlhttprequest', 'media', 'other', 'sub_frame']
+          }
+        }
+      ]
+    }).catch(e => console.warn('Referer rule update error:', e));
+  } catch (e) {
+    // Invalid referer URL
+  }
+}
+
+// 1. Capture exact Referer header sent by web page / video player iframe
+try {
+  chrome.webRequest.onBeforeSendHeaders.addListener(
+    (details) => {
+      let referer = '';
+      if (details.requestHeaders) {
+        for (const h of details.requestHeaders) {
+          if (h.name.toLowerCase() === 'referer') {
+            referer = h.value;
+            break;
+          }
+        }
+      }
+
+      const effectiveReferer = referer || details.initiator || (details.documentUrl ? new URL(details.documentUrl).origin : '');
+      if (effectiveReferer && details.url) {
+        urlRefererMap.set(details.url, effectiveReferer);
+      }
+    },
+    { urls: ['<all_urls>'] },
+    ['requestHeaders', 'extraHeaders']
+  );
+} catch (e) {
+  console.warn('webRequest.onBeforeSendHeaders listener failed:', e);
+}
 
 function sanitizeFilename(name) {
   if (!name) return 'video';
@@ -135,7 +198,6 @@ function isMediaUrl(url, contentType = '') {
   const lowerUrl = url.toLowerCase().split('?')[0];
   const type = contentType.toLowerCase();
 
-  // Check if extension is blocked by user settings (e.g. .ts, .m4s)
   const isBlocked = blockedExtensions.some(ext => lowerUrl.endsWith(ext.toLowerCase()));
   if (isBlocked && !lowerUrl.endsWith('.m3u8')) {
     return false;
@@ -183,6 +245,9 @@ function addTabMedia(tabId, mediaInfo) {
     if (mediaInfo.title && existing.title === 'Media Video') {
       existing.title = mediaInfo.title;
     }
+    if (mediaInfo.referer && !existing.referer) {
+      existing.referer = mediaInfo.referer;
+    }
   }
 
   updateBadge(tabId);
@@ -221,6 +286,7 @@ chrome.webRequest.onHeadersReceived.addListener(
     if (isMediaUrl(details.url, contentType)) {
       const filename = getFilenameFromUrl(details.url);
       const format = getMediaFormat(details.url, contentType);
+      const capturedReferer = urlRefererMap.get(details.url) || details.initiator || '';
 
       chrome.tabs.get(details.tabId, (tab) => {
         const pageTitle = (tab && tab.title) ? tab.title : filename;
@@ -234,7 +300,7 @@ chrome.webRequest.onHeadersReceived.addListener(
           formattedSize: formatBytes(contentLength),
           isHLS: format.includes('HLS') || details.url.toLowerCase().includes('.m3u8'),
           isDASH: format.includes('DASH') || details.url.toLowerCase().includes('.mpd'),
-          initiator: details.initiator || (tab ? tab.url : ''),
+          referer: capturedReferer || (tab ? tab.url : ''),
           thumbnail: null,
           duration: null,
           formattedDuration: '',
@@ -271,11 +337,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.action === 'SET_STREAM_REFERER') {
+    if (message.referer) {
+      applyRefererRule(message.referer);
+    }
+    sendResponse({ status: 'referer_applied' });
+    return true;
+  }
+
   if (message.action === 'MEDIA_FOUND_DOM') {
     const tabId = senderTabId;
     if (tabId && message.media) {
       chrome.tabs.get(tabId, (tab) => {
         const pageTitle = (tab && tab.title) ? tab.title : getFilenameFromUrl(message.media.url);
+        const capturedReferer = urlRefererMap.get(message.media.url) || (tab ? tab.url : '');
         const mediaObj = {
           url: message.media.url,
           title: pageTitle,
@@ -286,6 +361,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           formattedSize: 'DOM Video',
           isHLS: message.media.url.toLowerCase().includes('.m3u8'),
           isDASH: message.media.url.toLowerCase().includes('.mpd'),
+          referer: capturedReferer,
           thumbnail: message.media.thumbnail || null,
           duration: message.media.duration || null,
           formattedDuration: formatDuration(message.media.duration),
@@ -323,13 +399,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'OPEN_DOWNLOADER') {
     const streamUrl = encodeURIComponent(message.url);
     const title = encodeURIComponent(message.title || 'video');
-    const downloaderUrl = chrome.runtime.getURL(`downloader/downloader.html#url=${streamUrl}&title=${title}`);
+    const referer = encodeURIComponent(message.referer || urlRefererMap.get(message.url) || '');
+    
+    if (message.referer || urlRefererMap.get(message.url)) {
+      applyRefererRule(message.referer || urlRefererMap.get(message.url));
+    }
+
+    const downloaderUrl = chrome.runtime.getURL(`downloader/downloader.html#url=${streamUrl}&title=${title}&referer=${referer}`);
     chrome.tabs.create({ url: downloaderUrl });
     sendResponse({ status: 'opened' });
     return true;
   }
 
   if (message.action === 'DOWNLOAD_FILE') {
+    if (message.referer) {
+      applyRefererRule(message.referer);
+    }
+
     chrome.downloads.download({
       url: message.url,
       filename: sanitizeFilename(message.filename || 'video') + (message.ext ? `.${message.ext}` : '.mp4'),

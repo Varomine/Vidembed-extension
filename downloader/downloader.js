@@ -1,4 +1,4 @@
-// VidEmbed Parallel HLS Stream Downloader Engine - Enhanced CORS & Recovery
+// VidEmbed Parallel HLS Stream Downloader Engine - Enhanced Referer & CORS Recovery
 
 document.addEventListener('DOMContentLoaded', async () => {
   const videoTitleDisplay = document.getElementById('videoTitleDisplay');
@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let targetUrl = '';
   let streamTitle = 'video';
+  let streamReferer = '';
   let masterVariants = [];
   let isDownloading = false;
   let cancelRequested = false;
@@ -31,6 +32,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const params = new URLSearchParams(hash);
     targetUrl = params.get('url') ? decodeURIComponent(params.get('url')) : '';
     streamTitle = params.get('title') ? decodeURIComponent(params.get('title')) : 'video';
+    streamReferer = params.get('referer') ? decodeURIComponent(params.get('referer')) : '';
 
     videoTitleDisplay.textContent = streamTitle;
     filenameInput.value = sanitizeFilename(streamTitle);
@@ -62,14 +64,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }
 
-  // Robust Fetcher bypassing CORS restrictions
   async function corsFetch(url, options = {}) {
     try {
       const res = await fetch(url, { ...options, mode: 'cors', credentials: 'omit' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res;
     } catch (err) {
-      // Fallback attempt without cors mode if origin is restricted
       return await fetch(url, { ...options, mode: 'no-cors' });
     }
   }
@@ -79,6 +79,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!targetUrl) {
     statusHeading.textContent = 'Error: No HLS stream URL provided.';
     return;
+  }
+
+  // Activate dynamic referer spoofing rule for stream host
+  if (streamReferer) {
+    chrome.runtime.sendMessage({ action: 'SET_STREAM_REFERER', referer: streamReferer });
   }
 
   // 1. Initial Playlist Parsing
@@ -95,7 +100,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const option = document.createElement('option');
         option.value = variant.url;
         option.textContent = variant.label;
-        if (index === 0) option.selected = true; // Highest resolution
+        if (index === 0) option.selected = true;
         qualitySelect.appendChild(option);
       });
 

@@ -1,4 +1,4 @@
-// VidEmbed Popup UI Logic - Configurable Proxy & Sandbox Support
+// VidEmbed Popup UI Logic - Configurable Proxy, Referer Spoofing & Sandbox Support
 
 document.addEventListener('DOMContentLoaded', () => {
   const mediaContainer = document.getElementById('mediaContainer');
@@ -26,8 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let activePreviewUrl = '';
   let activePreviewTitle = '';
   let activePreviewIsHLS = false;
+  let activePreviewReferer = '';
 
-  // Saved Configured Proxy URL from Settings
   let userProxyUrl = '';
 
   function loadUserConfig() {
@@ -41,7 +41,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   loadUserConfig();
 
-  // Get current active tab
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs && tabs[0]) {
       activeTabId = tabs[0].id;
@@ -49,7 +48,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Request media items for active tab
   function loadTabMedia() {
     if (!activeTabId) return;
 
@@ -64,7 +62,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Render media cards
   function renderMediaList(items) {
     const query = searchInput.value.toLowerCase().trim();
     const hideTS = chkHideTS ? chkHideTS.checked : true;
@@ -213,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const previewBtn = card.querySelector('.btn-preview');
       previewBtn.addEventListener('click', () => {
-        openPreviewModal(item.url, item.title, isHLSStream);
+        openPreviewModal(item.url, item.title, isHLSStream, item.referer);
       });
 
       if (isHLSStream) {
@@ -222,7 +219,8 @@ document.addEventListener('DOMContentLoaded', () => {
           chrome.runtime.sendMessage({
             action: 'OPEN_DOWNLOADER',
             url: item.url,
-            title: item.title
+            title: item.title,
+            referer: item.referer || ''
           });
         });
       } else {
@@ -232,7 +230,8 @@ document.addEventListener('DOMContentLoaded', () => {
             action: 'DOWNLOAD_FILE',
             url: item.url,
             filename: item.filename,
-            ext: item.format.toLowerCase()
+            ext: item.format.toLowerCase(),
+            referer: item.referer || ''
           });
         });
       }
@@ -251,22 +250,25 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Open Preview Modal
-  function openPreviewModal(url, title, isHLS) {
+  function openPreviewModal(url, title, isHLS, referer) {
     activePreviewUrl = url;
     activePreviewTitle = title;
     activePreviewIsHLS = isHLS;
+    activePreviewReferer = referer || '';
 
     previewTitle.textContent = title;
     previewModal.classList.remove('hidden');
 
-    // Reload settings in case proxyUrl was changed recently
+    if (activePreviewReferer) {
+      chrome.runtime.sendMessage({ action: 'SET_STREAM_REFERER', referer: activePreviewReferer });
+    }
+
     chrome.storage.sync.get(['proxyUrl'], (items) => {
       userProxyUrl = (items.proxyUrl || '').trim();
       renderActivePreview();
     });
   }
 
-  // Render or update active preview based on Proxy & Sandbox checkboxes
   function renderActivePreview() {
     if (!activePreviewUrl) return;
 
@@ -281,7 +283,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const useProxy = chkUseProxy.checked;
     const useSandbox = chkUseSandbox.checked;
 
-    // Default is direct original stream URL (without proxy)
     let targetUrl = activePreviewUrl;
 
     if (useProxy) {
