@@ -1,4 +1,4 @@
-// VidEmbed Background Service Worker - Non-Intrusive Sniffer & Targeted Downloader Rules
+// VidEmbed Background Service Worker - Non-Intrusive Sniffer & YouTube Exclusion
 
 const tabMediaMap = new Map();
 const urlRefererMap = new Map();
@@ -45,7 +45,6 @@ function applyRefererRule(refererUrl) {
             ]
           },
           condition: {
-            // Apply only to media requests and stream files, never global page assets or auth cookies
             urlFilter: '*',
             resourceTypes: ['xmlhttprequest', 'media', 'other']
           }
@@ -172,6 +171,11 @@ function isMediaUrl(url, contentType = '') {
 
   const lowerUrl = url.toLowerCase().split('?')[0];
   const type = contentType.toLowerCase();
+
+  // Exclude YouTube and GoogleVideo completely
+  if (lowerUrl.includes('youtube.com') || lowerUrl.includes('googlevideo.com') || lowerUrl.includes('youtu.be')) {
+    return false;
+  }
 
   const isBlocked = blockedExtensions.some(ext => lowerUrl.endsWith(ext.toLowerCase()));
   if (isBlocked && !lowerUrl.endsWith('.m3u8')) {

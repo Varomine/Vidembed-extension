@@ -1,6 +1,12 @@
 // VidEmbed Content Script - Enhanced DOM Media & Thumbnail Sniffer
 
 (function () {
+  // Never interfere with YouTube
+  const host = window.location.hostname.toLowerCase();
+  if (host.includes('youtube.com') || host.includes('googlevideo.com') || host.includes('youtu.be')) {
+    return;
+  }
+
   const detectedUrls = new Map();
 
   function captureFrame(videoEl) {
@@ -13,7 +19,6 @@
       ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
       return canvas.toDataURL('image/jpeg', 0.65);
     } catch (e) {
-      // CORS tainted canvas
       return null;
     }
   }
@@ -115,7 +120,6 @@
     });
   }
 
-  // Inject standalone page_interceptor.js file to strictly avoid CSP inline script violations
   try {
     const script = document.createElement('script');
     script.src = chrome.runtime.getURL('content/page_interceptor.js');
