@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VidEmbed Stream Downloader</title>
+  <link rel="stylesheet" href="downloader.css">
+</head>
+<body>
+  <div class="downloader-app">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <polygon points="23 7 16 12 23 17 23 7"></polygon>
+            <rect x="1" y="5" width="15" height="14" rx="3" ry="3"></rect>
+            <path d="M10 9.5l3.5 2.5-3.5 2.5v-5z" fill="currentColor"></path>
+          </svg>
+        </div>
+        <div>
+          <h2>VidEmbed Downloader</h2>
+          <span class="sub-heading">Parallel HLS Stream Stitcher &bull; No 2-Hour Limit</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main-content">
+      <!-- Media Details & Config Card -->
+      <section class="card config-card">
+        <div class="card-header">
+          <h3 id="videoTitleDisplay">Loading Stream Information...</h3>
+        </div>
+        <div class="card-body grid-form">
+          <div class="form-group">
+            <label for="qualitySelect">Video Resolution / Quality</label>
+            <select id="qualitySelect" disabled>
+              <option value="">Parsing playlist qualities...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="filenameInput">Output Filename</label>
+            <input type="text" id="filenameInput" value="video_download">
+          </div>
+          <div class="form-group">
+            <label for="threadSelect">Parallel Download Threads</label>
+            <select id="threadSelect">
+              <option value="4">4 Threads (Standard)</option>
+              <option value="6" selected>6 Threads (Fast)</option>
+              <option value="10">10 Threads (Super Fast)</option>
+              <option value="16">16 Threads (Ultra)</option>
+            </select>
+          </div>
+          <div class="form-group action-group">
+            <button id="btnStartDownload" class="btn btn-primary">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Start Download
+            </button>
+            <button id="btnCancel" class="btn btn-danger hidden">Cancel</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Download Dashboard / Status -->
+      <section id="dashboardSection" class="card dashboard-card">
+        <div class="card-header flex-between">
+          <h3 id="statusHeading">Status: Ready</h3>
+          <span id="speedDisplay" class="speed-badge">0 KB/s</span>
+        </div>
+
+        <div class="card-body">
+          <!-- Progress Bar -->
+          <div class="progress-container">
+            <div id="progressBar" class="progress-bar" style="width: 0%;"></div>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-item">
+              <span class="stat-label">Progress</span>
+              <span id="percentDisplay" class="stat-value">0%</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Segments</span>
+              <span id="segmentDisplay" class="stat-value">0 / 0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Downloaded Data</span>
+              <span id="sizeDisplay" class="stat-value">0 MB</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Estimated ETA</span>
+              <span id="etaDisplay" class="stat-value">--:--</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Video Player Preview (Appears when completed) -->
+      <section id="resultSection" class="card result-card hidden">
+        <div class="card-header">
+          <h3>Download Complete & Ready!</h3>
+        </div>
+        <div class="card-body">
+          <p class="complete-text">Your HLS video stream has been stitched into a single MP4 file and downloaded to your computer.</p>
+          <div class="video-container">
+            <video id="outputVideo" controls></video>
+          </div>
+          <div class="result-actions">
+            <a id="btnSaveFile" class="btn btn-success" download="video.mp4">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Save MP4 Again
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="../lib/hls_parser.js"></script>
+  <script src="../lib/mp4_stitcher.js"></script>
+  <script src="downloader.js"></script>
+</body>
+</html>

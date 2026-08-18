@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VidEmbed Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="options-app">
+    <!-- Header (Top Save button removed) -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2">
+            <polygon points="23 7 16 12 23 17 23 7"></polygon>
+            <rect x="1" y="5" width="15" height="14" rx="3" ry="3"></rect>
+            <path d="M10 9.5l3.5 2.5-3.5 2.5v-5z" fill="currentColor"></path>
+          </svg>
+        </div>
+        <div>
+          <h2>VidEmbed Settings</h2>
+          <span class="sub-heading">Customize Media Sniffer, File Block Lists & Proxy Server</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Settings Grid -->
+    <main class="main-grid">
+      <form id="settingsForm">
+        <!-- Card 1: Custom Stream Relay Proxy -->
+        <section class="card">
+          <div class="card-header">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+              </svg>
+            </div>
+            <div>
+              <h3>Stream Relay Proxy Configuration</h3>
+              <p class="card-desc">Optionally route stream previews through your custom Cloudflare worker or proxy server.</p>
+            </div>
+          </div>
+
+          <div class="card-body form-stack">
+            <div class="form-group">
+              <label for="proxyUrlInput">Proxy Server URL (Default is Blank)</label>
+              <input type="text" id="proxyUrlInput" placeholder="https://your-worker.workers.dev/proxy?url=" autocomplete="off">
+              <small class="help-text">
+                📌 <strong>Format to put:</strong> Enter your base proxy URL ending with <code>?url=</code> (e.g. <code>https://your-worker.workers.dev/proxy?url=</code>).
+              </small>
+              <small class="repo-text">
+                💡 Need a proxy server? Learn how to set up & host your own free proxy in the GitHub repository: 
+                <a href="https://github.com/Varomine/streamrelay" target="_blank" rel="noopener">https://github.com/Varomine/streamrelay</a>
+              </small>
+            </div>
+          </div>
+        </section>
+
+        <!-- Card 2: File Type Block List & Filter -->
+        <section class="card">
+          <div class="card-header">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+              </svg>
+            </div>
+            <div>
+              <h3>File Type & Segment Blocking</h3>
+              <p class="card-desc">Prevent unwanted chunk segments or subtitles from clogging your detected media list.</p>
+            </div>
+          </div>
+
+          <div class="card-body form-stack">
+            <div class="form-group">
+              <label>Block Specific Extensions</label>
+              <div class="checkbox-grid">
+                <label class="custom-checkbox">
+                  <input type="checkbox" id="blockTS" checked>
+                  <span class="checkmark"></span>
+                  <span class="label-text">Ignore .TS segments (Recommended for HLS)</span>
+                </label>
+                <label class="custom-checkbox">
+                  <input type="checkbox" id="blockM4S" checked>
+                  <span class="checkmark"></span>
+                  <span class="label-text">Ignore .M4S segments</span>
+                </label>
+                <label class="custom-checkbox">
+                  <input type="checkbox" id="blockVTT" checked>
+                  <span class="checkmark"></span>
+                  <span class="label-text">Ignore .VTT / .SRT subtitle files</span>
+                </label>
+                <label class="custom-checkbox">
+                  <input type="checkbox" id="blockAAC">
+                  <span class="checkmark"></span>
+                  <span class="label-text">Ignore .AAC audio tracks</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="customBlockedInput">Custom Blocked Extensions</label>
+              <input type="text" id="customBlockedInput" placeholder=".ts, .m4s, .key, .vtt">
+              <small>Comma-separated list of file extensions to hide (e.g. .ts, .m4s).</small>
+            </div>
+
+            <div class="form-group">
+              <label for="minSizeFilter">Minimum File Size Filter</label>
+              <select id="minSizeFilter">
+                <option value="0">No filter (Show all detected media)</option>
+                <option value="102400">100 KB</option>
+                <option value="524288">500 KB</option>
+                <option value="1048576" selected>1 MB (Recommended)</option>
+                <option value="5242880">5 MB</option>
+              </select>
+              <small>Hides tiny UI audio clips or small ad snippets.</small>
+            </div>
+          </div>
+        </section>
+
+        <!-- Card 3: Downloader Engine Settings -->
+        <section class="card">
+          <div class="card-header">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+            </div>
+            <div>
+              <h3>HLS Downloader Engine</h3>
+              <p class="card-desc">Configure multi-threaded segment download performance.</p>
+            </div>
+          </div>
+
+          <div class="card-body grid-2">
+            <div class="form-group">
+              <label for="defaultThreads">Default Concurrency Threads</label>
+              <select id="defaultThreads">
+                <option value="4">4 Threads (Standard)</option>
+                <option value="6" selected>6 Threads (Fast)</option>
+                <option value="10">10 Threads (Super Fast)</option>
+                <option value="16">16 Threads (Ultra)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="autoDownload">Auto Save Target</label>
+              <select id="autoDownload">
+                <option value="true">Save to Downloads Folder</option>
+                <option value="false">Ask Download Location Every Time</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <div class="form-footer">
+          <button type="submit" class="btn btn-primary btn-lg">
+            Save All Preferences
+          </button>
+          <span id="toastMsg" class="toast hidden">✅ Preferences saved successfully!</span>
+        </div>
+      </form>
+    </main>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
