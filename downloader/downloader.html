@@ -20,7 +20,7 @@
         </div>
         <div>
           <h2>VidEmbed Downloader</h2>
-          <span class="sub-heading">Parallel HLS Stream Stitcher &bull; No 2-Hour Limit</span>
+          <span class="sub-heading">Parallel HLS & DASH Stream Stitcher &bull; No 2-Hour Limit</span>
         </div>
       </div>
     </header>
@@ -106,7 +106,7 @@
           <h3>Download Complete & Ready!</h3>
         </div>
         <div class="card-body">
-          <p class="complete-text">Your HLS video stream has been stitched into a single MP4 file and downloaded to your computer.</p>
+          <p class="complete-text">Your video stream has been stitched into a single MP4 file and downloaded to your computer.</p>
           <div class="video-container">
             <video id="outputVideo" controls></video>
           </div>
@@ -126,6 +126,7 @@
   </div>
 
   <script src="../lib/hls_parser.js"></script>
+  <script src="../lib/dash_parser.js"></script>
   <script src="../lib/mp4_stitcher.js"></script>
   <script src="downloader.js"></script>
 </body>

@@ -1,4 +1,4 @@
-// VidEmbed Parallel HLS Stream Downloader Engine - Sliding Window & Full Video Polling
+// VidEmbed Parallel HLS & MPEG-DASH Stream Downloader Engine
 
 document.addEventListener('DOMContentLoaded', async () => {
   const videoTitleDisplay = document.getElementById('videoTitleDisplay');
@@ -23,6 +23,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   let targetUrl = '';
   let streamTitle = 'video';
   let streamReferer = '';
+  let isDASHStream = false;
+  let parsedDASH = null;
+
   let masterVariants = [];
   let isDownloading = false;
   let cancelRequested = false;
@@ -77,7 +80,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   parseParams();
 
   if (!targetUrl) {
-    statusHeading.textContent = 'Error: No HLS stream URL provided.';
+    statusHeading.textContent = 'Error: No stream URL provided.';
     return;
   }
 
@@ -85,14 +88,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     chrome.runtime.sendMessage({ action: 'SET_STREAM_REFERER', referer: streamReferer });
   }
 
-  // 1. Initial Playlist Parsing
+  // 1. Initial Stream Parsing (HLS vs MPEG-DASH MPD)
   try {
-    statusHeading.textContent = 'Status: Fetching HLS Playlist...';
+    statusHeading.textContent = 'Status: Fetching Stream Manifest...';
     const response = await corsFetch(targetUrl);
-    const m3u8Text = await response.text();
+    const streamText = await response.text();
 
-    if (HLSParser.isMasterPlaylist(m3u8Text)) {
-      masterVariants = HLSParser.parseMasterPlaylist(m3u8Text, targetUrl);
+    if (DASHParser.isDASHMPD(streamText) || targetUrl.toLowerCase().includes('.mpd')) {
+      isDASHStream = true;
+      parsedDASH = DASHParser.parseMPD(streamText, targetUrl);
+
+      qualitySelect.innerHTML = '';
+      if (parsedDASH.videoRepresentations.length > 0) {
+        parsedDASH.videoRepresentations.forEach((rep, index) => {
+          const option = document.createElement('option');
+          option.value = rep.id;
+          option.textContent = `DASH Video: ${rep.label}`;
+          if (index === 0) option.selected = true;
+          qualitySelect.appendChild(option);
+        });
+      } else {
+        const option = document.createElement('option');
+        option.value = 'default';
+        option.textContent = 'DASH Default Stream';
+        qualitySelect.appendChild(option);
+      }
+
+      qualitySelect.disabled = false;
+      statusHeading.textContent = `Status: MPEG-DASH Stream detected (${parsedDASH.formattedTotalDuration || 'Full Video'}). Ready to download.`;
+    } else if (HLSParser.isMasterPlaylist(streamText)) {
+      masterVariants = HLSParser.parseMasterPlaylist(streamText, targetUrl);
       qualitySelect.innerHTML = '';
 
       masterVariants.forEach((variant, index) => {
@@ -114,11 +139,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     statusHeading.textContent = `Error parsing playlist: ${err.message}`;
   }
 
-  // 2. Parallel Downloader Engine with Dynamic Sliding Window Support
+  // 2. Parallel Downloader Execution Engine
   btnStartDownload.addEventListener('click', async () => {
     if (isDownloading) return;
 
-    const selectedMediaUrl = qualitySelect.value || targetUrl;
     const maxConcurrency = parseInt(threadSelect.value, 10) || 6;
     const outputFilename = filenameInput.value.trim() || 'video';
 
@@ -130,6 +154,140 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnCancel.classList.remove('hidden');
     resultSection.classList.add('hidden');
 
+    if (isDASHStream && parsedDASH) {
+      await downloadDASHStream(maxConcurrency, outputFilename);
+    } else {
+      await downloadHLSStream(maxConcurrency, outputFilename);
+    }
+  });
+
+  // Download MPEG-DASH Stream (.mpd)
+  async function downloadDASHStream(maxConcurrency, outputFilename) {
+    statusHeading.textContent = 'Status: Extracting MPEG-DASH segment URLs...';
+
+    try {
+      const selectedRepId = qualitySelect.value;
+      const videoRep = parsedDASH.videoRepresentations.find(r => r.id === selectedRepId) || parsedDASH.videoRepresentations[0];
+      const audioRep = parsedDASH.audioRepresentations[0] || null;
+
+      const videoSegData = DASHParser.getRepresentationSegments(videoRep, parsedDASH.baseUrl, parsedDASH.totalDuration);
+      const audioSegData = audioRep ? DASHParser.getRepresentationSegments(audioRep, parsedDASH.baseUrl, parsedDASH.totalDuration) : { initUrl: null, segments: [] };
+
+      const segmentsToFetch = [];
+
+      // Add Video Init & Segments
+      if (videoSegData.initUrl) {
+        segmentsToFetch.push({ url: videoSegData.initUrl, type: 'init-video' });
+      }
+      videoSegData.segments.forEach(s => segmentsToFetch.push({ url: s.url, type: 'video' }));
+
+      // Add Audio Init & Segments
+      if (audioSegData.initUrl) {
+        segmentsToFetch.push({ url: audioSegData.initUrl, type: 'init-audio' });
+      }
+      audioSegData.segments.forEach(s => segmentsToFetch.push({ url: s.url, type: 'audio' }));
+
+      const totalSegments = segmentsToFetch.length;
+      if (totalSegments === 0) throw new Error('No MPEG-DASH media segments found.');
+
+      statusHeading.textContent = `Status: Downloading ${totalSegments} MPEG-DASH chunks...`;
+      segmentDisplay.textContent = `0 / ${totalSegments}`;
+
+      const segmentBuffers = new Array(totalSegments);
+      let completedCount = 0;
+      let totalBytesDownloaded = 0;
+      let lastBytes = 0;
+      let lastTime = Date.now();
+      let currentIndex = 0;
+
+      async function fetchWorker() {
+        while (currentIndex < totalSegments && !cancelRequested) {
+          const segIndex = currentIndex++;
+          const item = segmentsToFetch[segIndex];
+
+          let attempts = 0;
+          let success = false;
+
+          while (attempts < 4 && !success && !cancelRequested) {
+            attempts++;
+            try {
+              const segResp = await corsFetch(item.url);
+              const buffer = await segResp.arrayBuffer();
+              const u8 = new Uint8Array(buffer);
+
+              segmentBuffers[segIndex] = u8;
+              completedCount++;
+              totalBytesDownloaded += u8.byteLength;
+              success = true;
+
+              const pct = Math.min(100, Math.round((completedCount / totalSegments) * 100));
+              progressBar.style.width = `${pct}%`;
+              percentDisplay.textContent = `${pct}%`;
+              segmentDisplay.textContent = `${completedCount} / ${totalSegments}`;
+              sizeDisplay.textContent = formatBytes(totalBytesDownloaded);
+
+              const now = Date.now();
+              const timeDiff = (now - lastTime) / 1000;
+              if (timeDiff >= 0.5) {
+                const bytesDiff = totalBytesDownloaded - lastBytes;
+                const bytesPerSec = bytesDiff / timeDiff;
+                speedDisplay.textContent = formatSpeed(bytesPerSec);
+
+                const remainingBytes = (totalBytesDownloaded / completedCount) * (totalSegments - completedCount);
+                const etaSecs = bytesPerSec > 0 ? remainingBytes / bytesPerSec : 0;
+                etaDisplay.textContent = formatETA(etaSecs);
+
+                lastBytes = totalBytesDownloaded;
+                lastTime = now;
+              }
+            } catch (e) {
+              if (attempts >= 4) console.warn(`Failed DASH chunk ${segIndex}:`, e);
+              else await new Promise(r => setTimeout(r, 400 * attempts));
+            }
+          }
+        }
+      }
+
+      const workerPromises = [];
+      for (let i = 0; i < Math.min(maxConcurrency, 16); i++) {
+        workerPromises.push(fetchWorker());
+      }
+      await Promise.all(workerPromises);
+
+      if (cancelRequested) {
+        statusHeading.textContent = 'Status: Download Cancelled.';
+        resetUI();
+        return;
+      }
+
+      statusHeading.textContent = 'Status: Stitching MPEG-DASH stream into MP4 file...';
+      const outputBlob = MP4Stitcher.stitchSegments(segmentBuffers, 'video/mp4');
+      const videoBlobUrl = URL.createObjectURL(outputBlob);
+
+      outputVideo.src = videoBlobUrl;
+      btnSaveFile.href = videoBlobUrl;
+      btnSaveFile.download = `${outputFilename}.mp4`;
+      resultSection.classList.remove('hidden');
+
+      chrome.downloads.download({
+        url: videoBlobUrl,
+        filename: `${outputFilename}.mp4`,
+        saveAs: false
+      });
+
+      statusHeading.textContent = 'Status: MPEG-DASH Download Completed Successfully!';
+      speedDisplay.textContent = 'Done!';
+
+    } catch (err) {
+      statusHeading.textContent = `DASH Download Error: ${err.message}`;
+    } finally {
+      resetUI();
+    }
+  }
+
+  // Download HLS Stream (.m3u8)
+  async function downloadHLSStream(maxConcurrency, outputFilename) {
+    const selectedMediaUrl = qualitySelect.value || targetUrl;
     statusHeading.textContent = 'Status: Fetching segment list...';
 
     try {
@@ -156,7 +314,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       let lastTime = Date.now();
       let currentIndex = 0;
 
-      // Sliding Window Poller: continuously fetch playlist for new segments if #EXT-X-ENDLIST is missing
       let pollFailures = 0;
       async function pollPlaylistLoop() {
         while (isDownloading && !hasEndList && !cancelRequested && pollFailures < 8) {
@@ -188,17 +345,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      // Launch sliding window poller in background
       if (!hasEndList) {
         pollPlaylistLoop();
       }
 
-      // Parallel Worker Pool
       async function fetchWorker() {
         while (isDownloading && !cancelRequested) {
           if (currentIndex >= segments.length) {
             if (hasEndList || pollFailures >= 8) {
-              break; // All segments finished
+              break;
             }
             await new Promise(r => setTimeout(r, 400));
             continue;
@@ -268,7 +423,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
 
-      // 3. Stitch segments into single MP4 file
       statusHeading.textContent = `Status: Stitching ${segmentBuffers.filter(Boolean).length} segments into MP4 video file...`;
       const outputBlob = MP4Stitcher.stitchSegments(segmentBuffers, 'video/mp4');
       const videoBlobUrl = URL.createObjectURL(outputBlob);
@@ -292,7 +446,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } finally {
       resetUI();
     }
-  });
+  }
 
   btnCancel.addEventListener('click', () => {
     cancelRequested = true;
@@ -301,7 +455,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function resetUI() {
     isDownloading = false;
     btnStartDownload.disabled = false;
-    qualitySelect.disabled = masterVariants.length === 0;
+    qualitySelect.disabled = masterVariants.length === 0 && (!parsedDASH || parsedDASH.videoRepresentations.length === 0);
     threadSelect.disabled = false;
     btnCancel.classList.add('hidden');
   }

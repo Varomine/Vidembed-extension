@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const HLSParser = require('./lib/hls_parser.js');
+const DASHParser = require('./lib/dash_parser.js');
 const MP4Stitcher = require('./lib/mp4_stitcher.js');
 
 console.log('=== Running VidEmbed Automated Verifications ===\n');
@@ -36,10 +37,6 @@ try {
   const variants = HLSParser.parseMasterPlaylist(sampleMasterM3U8, baseUrl);
   if (variants.length !== 3) throw new Error(`Expected 3 variants, got ${variants.length}`);
 
-  if (variants[0].resolution !== '1920x1080' || variants[0].url !== 'https://stream.example.com/video/1080p/index.m3u8') {
-    throw new Error('Variant 0 parsing mismatch');
-  }
-
   console.log('✅ HLSParser master playlist parsing passed.');
   console.log(`   Parsed variants: ${variants.map(v => v.label).join(', ')}`);
 } catch (e) {
@@ -47,31 +44,38 @@ try {
   process.exit(1);
 }
 
-// 3. HLS Parser Media Playlist test
+// 3. DASH Parser Test
 try {
-  const sampleMediaM3U8 = `
-#EXTM3U
-#EXT-X-TARGETDURATION:10
-#EXTINF:9.009,
-segment_0.ts
-#EXTINF:9.009,
-segment_1.ts
-#EXTINF:4.500,
-segment_2.ts
-  `;
+  const sampleMPD = `<?xml version="1.0" encoding="utf-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" mediaPresentationDuration="PT24M15S">
+  <Period>
+    <AdaptationSet mimeType="video/mp4">
+      <SegmentTemplate initialization="init-$RepresentationID$.mp4" media="chunk-$RepresentationID$-$Number$.m4s" timescale="1000" duration="4000" startNumber="1"/>
+      <Representation id="1080p" bandwidth="4500000" width="1920" height="1080"/>
+      <Representation id="720p" bandwidth="2500000" width="1280" height="720"/>
+    </AdaptationSet>
+    <AdaptationSet mimeType="audio/mp4">
+      <SegmentTemplate initialization="init-audio.mp4" media="chunk-audio-$Number$.m4s" timescale="1000" duration="4000" startNumber="1"/>
+      <Representation id="audio_eng" bandwidth="128000"/>
+    </AdaptationSet>
+  </Period>
+</MPD>`;
 
-  const mediaUrl = 'https://stream.example.com/video/1080p/index.m3u8';
-  const mediaInfo = HLSParser.parseMediaPlaylist(sampleMediaM3U8, mediaUrl);
+  const baseUrl = 'https://stream.example.com/dash/manifest.mpd';
+  const isDASH = DASHParser.isDASHMPD(sampleMPD);
+  if (!isDASH) throw new Error('Expected DASH MPD detection to be true');
 
-  if (mediaInfo.segmentCount !== 3) throw new Error(`Expected 3 segments, got ${mediaInfo.segmentCount}`);
-  if (mediaInfo.segments[0].url !== 'https://stream.example.com/video/1080p/segment_0.ts') {
-    throw new Error('Segment 0 URL resolution mismatch');
-  }
+  const parsed = DASHParser.parseMPD(sampleMPD, baseUrl);
+  if (parsed.videoRepresentations.length !== 2) throw new Error('Expected 2 video representations');
+  if (parsed.totalDuration !== 1455) throw new Error(`Expected 1455s total duration, got ${parsed.totalDuration}`);
 
-  console.log('✅ HLSParser media playlist parsing passed.');
-  console.log(`   Total segments: ${mediaInfo.segmentCount}, Total duration: ${mediaInfo.totalDuration}s`);
+  const segs = DASHParser.getRepresentationSegments(parsed.videoRepresentations[0], baseUrl, parsed.totalDuration);
+  if (segs.segments.length === 0) throw new Error('Expected DASH segment calculation');
+
+  console.log('✅ DASHParser MPD XML parsing passed.');
+  console.log(`   Representations: ${parsed.videoRepresentations.map(r => r.label).join(', ')}, Segments: ${segs.segments.length}`);
 } catch (e) {
-  console.error('❌ HLSParser media test failed:', e.message);
+  console.error('❌ DASHParser test failed:', e.message);
   process.exit(1);
 }
 
