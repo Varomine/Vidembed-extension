@@ -1,4 +1,4 @@
-// VidEmbed Background Service Worker - Advanced Referer Spoofing & Network Interceptor
+// VidEmbed Background Service Worker - Non-Intrusive Sniffer & Targeted Downloader Rules
 
 const tabMediaMap = new Map();
 const urlRefererMap = new Map();
@@ -21,39 +21,7 @@ chrome.storage.onChanged.addListener((changes) => {
   }
 });
 
-// Setup Initial Declarative Net Request Rules for CORS
-function setupCORSRules() {
-  if (chrome.declarativeNetRequest && chrome.declarativeNetRequest.updateSessionRules) {
-    chrome.declarativeNetRequest.updateSessionRules({
-      removeRuleIds: [1001],
-      addRules: [
-        {
-          id: 1001,
-          priority: 1,
-          action: {
-            type: 'modifyHeaders',
-            responseHeaders: [
-              { header: 'access-control-allow-origin', operation: 'set', value: '*' },
-              { header: 'access-control-allow-methods', operation: 'set', value: 'GET, POST, OPTIONS, HEAD' },
-              { header: 'access-control-allow-headers', operation: 'set', value: '*' },
-              { header: 'access-control-allow-credentials', operation: 'set', value: 'true' }
-            ]
-          },
-          condition: {
-            urlFilter: '*',
-            resourceTypes: ['xmlhttprequest', 'media', 'other', 'sub_frame']
-          }
-        }
-      ]
-    }).catch(err => console.warn('DNR Rule error:', err));
-  }
-}
-
-setupCORSRules();
-chrome.runtime.onInstalled.addListener(setupCORSRules);
-chrome.runtime.onStartup.addListener(setupCORSRules);
-
-// Dynamic Referer & Origin Spoofing Rule
+// Dynamic Referer & CORS Modifier - Scoped ONLY to stream requests, never global browsing
 function applyRefererRule(refererUrl) {
   if (!refererUrl || !chrome.declarativeNetRequest || !chrome.declarativeNetRequest.updateSessionRules) return;
 
@@ -73,13 +41,13 @@ function applyRefererRule(refererUrl) {
             ],
             responseHeaders: [
               { header: 'access-control-allow-origin', operation: 'set', value: '*' },
-              { header: 'access-control-allow-methods', operation: 'set', value: 'GET, POST, OPTIONS, HEAD' },
-              { header: 'access-control-allow-headers', operation: 'set', value: '*' }
+              { header: 'access-control-allow-methods', operation: 'set', value: 'GET, POST, OPTIONS, HEAD' }
             ]
           },
           condition: {
+            // Apply only to media requests and stream files, never global page assets or auth cookies
             urlFilter: '*',
-            resourceTypes: ['xmlhttprequest', 'media', 'other', 'sub_frame']
+            resourceTypes: ['xmlhttprequest', 'media', 'other']
           }
         }
       ]
@@ -89,7 +57,14 @@ function applyRefererRule(refererUrl) {
   }
 }
 
-// 1. Capture exact Referer header sent by web page / video player iframe
+// Clean up any old global rules on startup
+if (chrome.declarativeNetRequest && chrome.declarativeNetRequest.updateSessionRules) {
+  chrome.declarativeNetRequest.updateSessionRules({
+    removeRuleIds: [1001]
+  }).catch(() => {});
+}
+
+// Capture exact Referer header sent by video player iframe
 try {
   chrome.webRequest.onBeforeSendHeaders.addListener(
     (details) => {
