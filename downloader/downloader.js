@@ -1,4 +1,4 @@
-// VidEmbed Parallel HLS Stream Downloader Engine - Enhanced Referer & CORS Recovery
+// VidEmbed Parallel HLS Stream Downloader Engine - Sliding Window & Full Video Polling
 
 document.addEventListener('DOMContentLoaded', async () => {
   const videoTitleDisplay = document.getElementById('videoTitleDisplay');
@@ -81,7 +81,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  // Activate dynamic referer spoofing rule for stream host
   if (streamReferer) {
     chrome.runtime.sendMessage({ action: 'SET_STREAM_REFERER', referer: streamReferer });
   }
@@ -115,7 +114,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     statusHeading.textContent = `Error parsing playlist: ${err.message}`;
   }
 
-  // 2. Parallel Downloader Engine
+  // 2. Parallel Downloader Engine with Dynamic Sliding Window Support
   btnStartDownload.addEventListener('click', async () => {
     if (isDownloading) return;
 
@@ -138,35 +137,80 @@ document.addEventListener('DOMContentLoaded', async () => {
       const playlistText = await resp.text();
       const mediaInfo = HLSParser.parseMediaPlaylist(playlistText, selectedMediaUrl);
 
-      const segments = mediaInfo.segments;
-      const totalSegments = segments.length;
+      const segments = [...mediaInfo.segments];
+      const segmentUrlSet = new Set(segments.map(s => s.url));
+      let hasEndList = mediaInfo.hasEndList;
 
-      if (totalSegments === 0) {
+      if (segments.length === 0) {
         throw new Error('No video segments found in playlist.');
       }
 
-      statusHeading.textContent = `Status: Downloading ${totalSegments} segments in parallel...`;
-      segmentDisplay.textContent = `0 / ${totalSegments}`;
+      statusHeading.textContent = `Status: Downloading ${segments.length} segments (${mediaInfo.formattedTotalDuration || 'full video'})...`;
+      segmentDisplay.textContent = `0 / ${segments.length}`;
 
-      const segmentBuffers = new Array(totalSegments);
+      const segmentBuffers = [];
       let completedCount = 0;
       let totalBytesDownloaded = 0;
 
-      let startTime = Date.now();
       let lastBytes = 0;
       let lastTime = Date.now();
-
       let currentIndex = 0;
 
+      // Sliding Window Poller: continuously fetch playlist for new segments if #EXT-X-ENDLIST is missing
+      let pollFailures = 0;
+      async function pollPlaylistLoop() {
+        while (isDownloading && !hasEndList && !cancelRequested && pollFailures < 8) {
+          await new Promise(r => setTimeout(r, 2000));
+          try {
+            const pResp = await corsFetch(selectedMediaUrl);
+            const pText = await pResp.text();
+            const pInfo = HLSParser.parseMediaPlaylist(pText, selectedMediaUrl);
+
+            hasEndList = pInfo.hasEndList;
+
+            let addedNew = 0;
+            pInfo.segments.forEach(newSeg => {
+              if (!segmentUrlSet.has(newSeg.url)) {
+                segmentUrlSet.add(newSeg.url);
+                segments.push(newSeg);
+                addedNew++;
+              }
+            });
+
+            if (addedNew > 0) {
+              pollFailures = 0;
+            } else {
+              pollFailures++;
+            }
+          } catch (e) {
+            pollFailures++;
+          }
+        }
+      }
+
+      // Launch sliding window poller in background
+      if (!hasEndList) {
+        pollPlaylistLoop();
+      }
+
+      // Parallel Worker Pool
       async function fetchWorker() {
-        while (currentIndex < totalSegments && !cancelRequested) {
+        while (isDownloading && !cancelRequested) {
+          if (currentIndex >= segments.length) {
+            if (hasEndList || pollFailures >= 8) {
+              break; // All segments finished
+            }
+            await new Promise(r => setTimeout(r, 400));
+            continue;
+          }
+
           const segIndex = currentIndex++;
           const seg = segments[segIndex];
 
           let attempts = 0;
           let success = false;
 
-          while (attempts < 3 && !success && !cancelRequested) {
+          while (attempts < 4 && !success && !cancelRequested) {
             attempts++;
             try {
               const segResp = await corsFetch(seg.url);
@@ -178,10 +222,11 @@ document.addEventListener('DOMContentLoaded', async () => {
               totalBytesDownloaded += u8.byteLength;
               success = true;
 
-              const pct = Math.round((completedCount / totalSegments) * 100);
+              const totalSegsCount = segments.length;
+              const pct = Math.min(100, Math.round((completedCount / totalSegsCount) * 100));
               progressBar.style.width = `${pct}%`;
               percentDisplay.textContent = `${pct}%`;
-              segmentDisplay.textContent = `${completedCount} / ${totalSegments}`;
+              segmentDisplay.textContent = `${completedCount} / ${totalSegsCount}`;
               sizeDisplay.textContent = formatBytes(totalBytesDownloaded);
 
               const now = Date.now();
@@ -191,7 +236,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const bytesPerSec = bytesDiff / timeDiff;
                 speedDisplay.textContent = formatSpeed(bytesPerSec);
 
-                const remainingBytes = (totalBytesDownloaded / completedCount) * (totalSegments - completedCount);
+                const remainingBytes = (totalBytesDownloaded / completedCount) * (totalSegsCount - completedCount);
                 const etaSecs = bytesPerSec > 0 ? remainingBytes / bytesPerSec : 0;
                 etaDisplay.textContent = formatETA(etaSecs);
 
@@ -200,8 +245,8 @@ document.addEventListener('DOMContentLoaded', async () => {
               }
 
             } catch (fetchErr) {
-              if (attempts >= 3) {
-                console.warn(`Failed segment ${segIndex} after 3 attempts:`, fetchErr);
+              if (attempts >= 4) {
+                console.warn(`Failed segment ${segIndex} after 4 attempts:`, fetchErr);
               } else {
                 await new Promise(r => setTimeout(r, 400 * attempts));
               }
@@ -211,7 +256,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       const workerPromises = [];
-      for (let i = 0; i < Math.min(maxConcurrency, totalSegments); i++) {
+      for (let i = 0; i < Math.min(maxConcurrency, 16); i++) {
         workerPromises.push(fetchWorker());
       }
 
@@ -223,8 +268,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
 
-      // 3. Stitch segments into MP4 file
-      statusHeading.textContent = 'Status: Stitching segments into MP4 video file...';
+      // 3. Stitch segments into single MP4 file
+      statusHeading.textContent = `Status: Stitching ${segmentBuffers.filter(Boolean).length} segments into MP4 video file...`;
       const outputBlob = MP4Stitcher.stitchSegments(segmentBuffers, 'video/mp4');
       const videoBlobUrl = URL.createObjectURL(outputBlob);
 
