@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VidEmbed - Batch Series & Episode Downloader</title>
+  <title>VidEmbed - Batch Video Downloader</title>
   <link rel="stylesheet" href="batch.css">
 </head>
 <body>
@@ -20,7 +20,7 @@
         </div>
         <div>
           <h2>VidEmbed Batch Downloader</h2>
-          <span class="sub-heading">Auto-Extract & Batch Download All Episodes as MP4</span>
+          <span class="sub-heading">Paste Episode / Video URLs & Auto-Extract MP4 Streams</span>
         </div>
       </div>
       <div class="header-actions">
@@ -33,16 +33,17 @@
 
     <!-- Main Workspace -->
     <main class="batch-workspace">
-      <!-- Status Card -->
+      <!-- Input URL Box Card -->
       <section class="card status-card">
-        <div class="status-summary">
-          <div>
-            <h3 id="txtBatchTitle">Extracting Series Episodes...</h3>
-            <p id="txtBatchSub">Auto-scanning episode pages for MP4 & HLS video streams.</p>
-          </div>
-          <div class="stats-pills">
-            <span class="pill pill-info" id="pillTotalCount">0 Episodes Found</span>
-            <span class="pill pill-success" id="pillReadyCount">0 Ready to Download</span>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <h3 style="font-size: 14px; font-weight: 700; color: #fff;">1. Paste Video / Episode URLs (One per line)</h3>
+          <textarea id="urlInputText" rows="5" style="width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; color: #f8fafc; font-family: monospace; font-size: 12px; outline: none;" placeholder="Paste video episode URLs here (e.g.):&#10;https://www.mioz-anime.com/episode/higurashi-no-naku-koro-ni-kai-ep-1&#10;https://www.mioz-anime.com/episode/higurashi-no-naku-koro-ni-kai-ep-2&#10;https://www.mioz-anime.com/episode/higurashi-no-naku-koro-ni-kai-ep-3"></textarea>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span id="txtUrlCount" style="font-size: 12px; color: #94a3b8;">0 URLs entered</span>
+            <button id="btnDetectStreams" class="btn btn-secondary">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              Auto-Detect Video Streams
+            </button>
           </div>
         </div>
       </section>
@@ -54,11 +55,11 @@
             <div class="left-controls">
               <label class="checkbox-label">
                 <input type="checkbox" id="chkSelectAll" checked>
-                <span>Select All Episodes</span>
+                <span>Select All Detected Videos</span>
               </label>
             </div>
             <div class="right-controls">
-              <button id="btnExtractAll" class="btn-sm btn-secondary">Re-Scan Streams</button>
+              <span id="pillReadyCount" class="pill pill-success">0 Ready</span>
             </div>
           </div>
         </div>
@@ -68,23 +69,21 @@
             <thead>
               <tr>
                 <th width="40"><input type="checkbox" id="chkHeaderCheck" checked></th>
-                <th>Episode Name / Title</th>
-                <th>Page Link</th>
+                <th>Episode / Video Name</th>
+                <th>Source Page URL</th>
                 <th>Stream Format</th>
                 <th>Status</th>
                 <th>Action</th>
               </tr>
             </thead>
             <tbody id="episodesTableBody">
-              <!-- Dynamic Episode Rows -->
+              <!-- Dynamic Rows -->
             </tbody>
           </table>
         </div>
       </section>
     </main>
   </div>
-
-  <iframe id="extractorFrame" style="display:none; width:0; height:0;"></iframe>
 
   <script src="../lib/hls_parser.js"></script>
   <script src="../lib/dash_parser.js"></script>

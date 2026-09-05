@@ -1,24 +1,32 @@
-// VidEmbed Batch Series & Episode Auto-Extractor & MP4 Downloader Engine
+// VidEmbed Batch Video Downloader JS Engine
 
 document.addEventListener('DOMContentLoaded', () => {
-  const txtBatchTitle = document.getElementById('txtBatchTitle');
-  const txtBatchSub = document.getElementById('txtBatchSub');
-  const pillTotalCount = document.getElementById('pillTotalCount');
-  const pillReadyCount = document.getElementById('pillReadyCount');
+  const urlInputText = document.getElementById('urlInputText');
+  const txtUrlCount = document.getElementById('txtUrlCount');
+  const btnDetectStreams = document.getElementById('btnDetectStreams');
+  const btnStartBatch = document.getElementById('btnStartBatch');
 
   const chkSelectAll = document.getElementById('chkSelectAll');
   const chkHeaderCheck = document.getElementById('chkHeaderCheck');
-  const btnExtractAll = document.getElementById('btnExtractAll');
-  const btnStartBatch = document.getElementById('btnStartBatch');
-
+  const pillReadyCount = document.getElementById('pillReadyCount');
   const episodesTableBody = document.getElementById('episodesTableBody');
-  const extractorFrame = document.getElementById('extractorFrame');
 
-  let episodeItems = [];
-  let isBatchRunning = false;
+  let detectedItems = [];
+  let isDownloadingBatch = false;
 
-  // 1. Parse Episode URLs from Hash or Storage
-  function parseParams() {
+  // Read URLs on input change
+  urlInputText.addEventListener('input', () => {
+    const lines = parseUrlsFromInput();
+    txtUrlCount.textContent = `${lines.length} URL${lines.length !== 1 ? 's' : ''} entered`;
+  });
+
+  function parseUrlsFromInput() {
+    const text = urlInputText.value || '';
+    return text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 5 && (l.startsWith('http://') || l.startsWith('https://')));
+  }
+
+  // Parse hash / storage queue if passed from popup
+  function initFromStorage() {
     const hash = window.location.hash.substring(1);
     const params = new URLSearchParams(hash);
     const rawData = params.get('data');
@@ -26,162 +34,150 @@ document.addEventListener('DOMContentLoaded', () => {
     if (rawData) {
       try {
         const decoded = JSON.parse(decodeURIComponent(rawData));
-        if (Array.isArray(decoded)) {
-          episodeItems = decoded.map((ep, idx) => ({
-            id: idx + 1,
-            title: ep.title || `Episode ${idx + 1}`,
-            pageUrl: ep.url,
-            streamUrl: ep.streamUrl || '',
-            format: ep.format || 'Pending',
-            status: ep.streamUrl ? 'Ready' : 'Extracting...',
-            selected: true
-          }));
+        if (Array.isArray(decoded) && decoded.length > 0) {
+          urlInputText.value = decoded.map(d => d.url || d).join('\n');
+          txtUrlCount.textContent = `${decoded.length} URLs entered`;
+          startAutoDetection();
         }
       } catch (e) {}
-    }
-
-    if (episodeItems.length === 0) {
-      chrome.storage.local.get(['batchQueue'], (items) => {
-        if (items.batchQueue && Array.isArray(items.batchQueue)) {
-          episodeItems = items.batchQueue.map((ep, idx) => ({
-            id: idx + 1,
-            title: ep.title || `Episode ${idx + 1}`,
-            pageUrl: ep.url,
-            streamUrl: ep.streamUrl || '',
-            format: ep.format || 'Pending',
-            status: ep.streamUrl ? 'Ready' : 'Extracting...',
-            selected: true
-          }));
-          initUI();
-          autoExtractStreams();
-        }
-      });
     } else {
-      initUI();
-      autoExtractStreams();
+      chrome.storage.local.get(['batchQueue'], (items) => {
+        if (items.batchQueue && Array.isArray(items.batchQueue) && items.batchQueue.length > 0) {
+          urlInputText.value = items.batchQueue.map(d => d.url || d).join('\n');
+          txtUrlCount.textContent = `${items.batchQueue.length} URLs entered`;
+          startAutoDetection();
+        }
+      });
     }
   }
 
-  function initUI() {
-    txtBatchTitle.textContent = `Batch Series Downloader (${episodeItems.length} Episodes)`;
-    txtBatchSub.textContent = 'Auto-extracting media streams across all series episodes...';
+  btnDetectStreams.addEventListener('click', startAutoDetection);
+
+  async function startAutoDetection() {
+    const urls = parseUrlsFromInput();
+    if (urls.length === 0) {
+      alert('Please paste at least one video episode URL into the box.');
+      return;
+    }
+
+    detectedItems = urls.map((url, idx) => ({
+      id: idx + 1,
+      title: extractTitleFromUrl(url, idx + 1),
+      pageUrl: url,
+      streamUrl: '',
+      format: 'Pending',
+      status: 'Detecting...',
+      selected: true
+    }));
+
     renderTable();
-  }
 
-  function renderTable() {
-    episodesTableBody.innerHTML = '';
-
-    let readyCount = 0;
-
-    episodeItems.forEach((item, index) => {
-      if (item.status === 'Ready' || item.status === 'Completed') readyCount++;
-
-      const tr = document.createElement('tr');
-      let statusBadgeClass = 'badge-extracting';
-      if (item.status === 'Ready') statusBadgeClass = 'badge-ready';
-      else if (item.status === 'Downloading...') statusBadgeClass = 'badge-downloading';
-      else if (item.status === 'Completed') statusBadgeClass = 'badge-complete';
-      else if (item.status === 'Error') statusBadgeClass = 'badge-error';
-
-      tr.innerHTML = `
-        <td><input type="checkbox" class="chk-ep" data-index="${index}" ${item.selected ? 'checked' : ''}></td>
-        <td class="font-bold">${escapeHtml(item.title)}</td>
-        <td><a href="${escapeHtml(item.pageUrl)}" target="_blank" class="text-truncate" style="color:#818cf8;">${escapeHtml(item.pageUrl)}</a></td>
-        <td><span class="pill pill-info">${escapeHtml(item.format)}</span></td>
-        <td><span class="badge-status ${statusBadgeClass}">${escapeHtml(item.status)}</span></td>
-        <td>
-          <button class="btn-sm btn-secondary btn-single-dl" data-index="${index}" ${!item.streamUrl ? 'disabled' : ''}>Download MP4</button>
-        </td>
-      `;
-
-      tr.querySelector('.chk-ep').addEventListener('change', (e) => {
-        item.selected = e.target.checked;
-        updateControls();
-      });
-
-      const singleBtn = tr.querySelector('.btn-single-dl');
-      singleBtn.addEventListener('click', () => {
-        downloadSingleEpisode(item);
-      });
-
-      episodesTableBody.appendChild(tr);
-    });
-
-    pillTotalCount.textContent = `${episodeItems.length} Episodes`;
-    pillReadyCount.textContent = `${readyCount} Ready`;
-
-    updateControls();
-  }
-
-  function updateControls() {
-    const selectedCount = episodeItems.filter(e => e.selected && (e.status === 'Ready' || e.streamUrl)).length;
-    btnStartBatch.disabled = selectedCount === 0 || isBatchRunning;
-  }
-
-  // 2. Auto-Extract Media Stream URLs for each episode page
-  async function autoExtractStreams() {
-    for (let i = 0; i < episodeItems.length; i++) {
-      const item = episodeItems[i];
-      if (item.streamUrl) continue;
-
-      item.status = 'Extracting...';
-      renderTable();
-
+    for (let i = 0; i < detectedItems.length; i++) {
+      const item = detectedItems[i];
       try {
-        const streamInfo = await fetchAndExtractStream(item.pageUrl);
-        if (streamInfo && streamInfo.url) {
-          item.streamUrl = streamInfo.url;
-          item.format = streamInfo.format || 'HLS';
-          item.referer = streamInfo.referer || item.pageUrl;
-          item.status = 'Ready';
-        } else {
-          item.status = 'Ready (DOM)';
-          item.streamUrl = item.pageUrl; // Fallback
-          item.format = 'Stream';
-        }
-      } catch (err) {
+        const info = await scanPageForStream(item.pageUrl);
+        item.streamUrl = info.url;
+        item.format = info.format;
+        item.referer = item.pageUrl;
         item.status = 'Ready';
+      } catch (err) {
         item.streamUrl = item.pageUrl;
+        item.format = 'Stream';
+        item.status = 'Ready';
       }
       renderTable();
     }
   }
 
-  async function fetchAndExtractStream(pageUrl) {
+  async function scanPageForStream(pageUrl) {
     return new Promise((resolve) => {
-      let resolved = false;
+      let done = false;
 
-      // 1. Fetch HTML text and scan for m3u8 / mp4 links
       fetch(pageUrl).then(r => r.text()).then(html => {
         const matches = html.match(/https?:\/\/[^\s"'<>]+(?:\.m3u8|\.mpd|\.mp4)[^\s"'<>]*/gi);
         if (matches && matches.length > 0) {
-          resolved = true;
+          done = true;
           const url = matches[0];
           let format = 'HLS';
           if (url.includes('.mpd')) format = 'DASH';
           else if (url.includes('.mp4')) format = 'MP4';
-          return resolve({ url, format, referer: pageUrl });
+          return resolve({ url, format });
         }
       }).catch(() => {});
 
-      // Timeout fallback
       setTimeout(() => {
-        if (!resolved) {
-          resolve({ url: pageUrl, format: 'HLS', referer: pageUrl });
+        if (!done) {
+          resolve({ url: pageUrl, format: 'HLS' });
         }
-      }, 3000);
+      }, 2500);
     });
   }
 
-  // 3. Batch Download Execution Engine
+  function extractTitleFromUrl(url, index) {
+    try {
+      const parsed = new URL(url);
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      if (segments.length > 0) {
+        let last = segments[segments.length - 1];
+        last = last.replace(/[-_]/g, ' ');
+        return last.charAt(0).toUpperCase() + last.slice(1);
+      }
+    } catch (e) {}
+    return `Episode ${index}`;
+  }
+
+  function renderTable() {
+    episodesTableBody.innerHTML = '';
+    let readyCount = 0;
+
+    detectedItems.forEach((item, index) => {
+      if (item.status === 'Ready' || item.status === 'Completed') readyCount++;
+
+      const tr = document.createElement('tr');
+      let statusClass = 'badge-extracting';
+      if (item.status === 'Ready') statusClass = 'badge-ready';
+      else if (item.status === 'Downloading...') statusClass = 'badge-downloading';
+      else if (item.status === 'Completed') statusClass = 'badge-complete';
+
+      tr.innerHTML = `
+        <td><input type="checkbox" class="chk-item" data-index="${index}" ${item.selected ? 'checked' : ''}></td>
+        <td style="font-weight:600; color:#ffffff;">${escapeHtml(item.title)}</td>
+        <td><a href="${escapeHtml(item.pageUrl)}" target="_blank" class="text-truncate" style="color:#818cf8;">${escapeHtml(item.pageUrl)}</a></td>
+        <td><span class="pill pill-info">${escapeHtml(item.format)}</span></td>
+        <td><span class="badge-status ${statusClass}">${escapeHtml(item.status)}</span></td>
+        <td>
+          <button class="btn-sm btn-secondary btn-single" data-index="${index}" ${!item.streamUrl ? 'disabled' : ''}>Download MP4</button>
+        </td>
+      `;
+
+      tr.querySelector('.chk-item').addEventListener('change', (e) => {
+        item.selected = e.target.checked;
+        updateControls();
+      });
+
+      tr.querySelector('.btn-single').addEventListener('click', () => {
+        triggerDownload(item);
+      });
+
+      episodesTableBody.appendChild(tr);
+    });
+
+    pillReadyCount.textContent = `${readyCount} Ready`;
+    updateControls();
+  }
+
+  function updateControls() {
+    const selectedReady = detectedItems.filter(i => i.selected && i.streamUrl).length;
+    btnStartBatch.disabled = selectedReady === 0 || isDownloadingBatch;
+  }
+
   btnStartBatch.addEventListener('click', async () => {
-    if (isBatchRunning) return;
+    if (isDownloadingBatch) return;
 
-    isBatchRunning = true;
+    isDownloadingBatch = true;
     btnStartBatch.disabled = true;
-    btnExtractAll.disabled = true;
 
-    const toDownload = episodeItems.filter(e => e.selected && e.streamUrl);
+    const toDownload = detectedItems.filter(i => i.selected && i.streamUrl);
 
     for (let i = 0; i < toDownload.length; i++) {
       const item = toDownload[i];
@@ -189,7 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderTable();
 
       try {
-        await downloadSingleEpisode(item);
+        await triggerDownload(item);
         item.status = 'Completed';
       } catch (err) {
         item.status = 'Completed';
@@ -197,13 +193,12 @@ document.addEventListener('DOMContentLoaded', () => {
       renderTable();
     }
 
-    isBatchRunning = false;
-    btnExtractAll.disabled = false;
+    isDownloadingBatch = false;
     updateControls();
-    alert('✨ Batch Download Finished! All episodes have been saved to your downloads.');
+    alert('✨ Batch Download Complete! All videos saved as MP4.');
   });
 
-  async function downloadSingleEpisode(item) {
+  async function triggerDownload(item) {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage({
         action: 'OPEN_DOWNLOADER',
@@ -217,26 +212,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   chkSelectAll.addEventListener('change', (e) => {
-    const isChecked = e.target.checked;
-    chkHeaderCheck.checked = isChecked;
-    episodeItems.forEach(i => i.selected = isChecked);
+    const val = e.target.checked;
+    chkHeaderCheck.checked = val;
+    detectedItems.forEach(i => i.selected = val);
     renderTable();
   });
 
   chkHeaderCheck.addEventListener('change', (e) => {
-    const isChecked = e.target.checked;
-    chkSelectAll.checked = isChecked;
-    episodeItems.forEach(i => i.selected = isChecked);
+    const val = e.target.checked;
+    chkSelectAll.checked = val;
+    detectedItems.forEach(i => i.selected = val);
     renderTable();
   });
 
-  btnExtractAll.addEventListener('click', () => {
-    episodeItems.forEach(i => { i.streamUrl = ''; i.status = 'Extracting...'; });
-    renderTable();
-    autoExtractStreams();
-  });
-
-  parseParams();
+  initFromStorage();
 
   function escapeHtml(str) {
     if (!str) return '';
