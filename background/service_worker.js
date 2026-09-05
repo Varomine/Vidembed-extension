@@ -1,4 +1,4 @@
-// VidEmbed Background Service Worker - Non-Intrusive Sniffer & Targeted Downloader Rules
+// VidEmbed Background Service Worker - Non-Intrusive Sniffer & Deep Stream Recognition
 
 const tabMediaMap = new Map();
 const urlRefererMap = new Map();
@@ -133,21 +133,22 @@ function formatBytes(bytes) {
 
 function getMediaFormat(url, contentType = '') {
   const cleanUrl = url.toLowerCase().split('?')[0];
+  const lowerUrl = url.toLowerCase();
   const type = contentType.toLowerCase();
 
-  if (cleanUrl.endsWith('.m3u8') || url.toLowerCase().includes('.m3u8') || type.includes('mpegurl') || type.includes('apple.mpegurl')) {
+  if (cleanUrl.endsWith('.m3u8') || lowerUrl.includes('.m3u8') || lowerUrl.includes('m3u8') || type.includes('mpegurl') || type.includes('apple.mpegurl')) {
     return 'HLS';
   }
-  if (cleanUrl.endsWith('.mpd') || url.toLowerCase().includes('.mpd') || type.includes('dash+xml')) {
+  if (cleanUrl.endsWith('.mpd') || lowerUrl.includes('.mpd') || type.includes('dash+xml')) {
     return 'DASH';
   }
-  if (cleanUrl.endsWith('.mp4') || type.includes('video/mp4')) {
+  if (cleanUrl.endsWith('.mp4') || lowerUrl.includes('.mp4') || type.includes('video/mp4')) {
     return 'MP4';
   }
-  if (cleanUrl.endsWith('.webm') || type.includes('video/webm')) {
+  if (cleanUrl.endsWith('.webm') || lowerUrl.includes('.webm') || type.includes('video/webm')) {
     return 'WEBM';
   }
-  if (cleanUrl.endsWith('.flv') || type.includes('video/x-flv')) {
+  if (cleanUrl.endsWith('.flv') || lowerUrl.includes('.flv') || type.includes('video/x-flv')) {
     return 'FLV';
   }
   if (cleanUrl.endsWith('.ts') || type.includes('video/mp2t')) {
@@ -183,7 +184,7 @@ function isMediaUrl(url, contentType = '') {
     return false;
   }
 
-  const mediaKeywords = ['.mp4', '.m3u8', '.mpd', '.webm', '.flv', '.mov', '.m4v', '.aac', '.mp3', '.m4a'];
+  const mediaKeywords = ['.mp4', '.m3u8', '.mpd', '.webm', '.flv', '.mov', '.m4v', '.aac', '.mp3', '.m4a', 'master.m3u8', 'index.m3u8', 'playlist.m3u8', 'manifest.mpd'];
   const isExtensionMatch = mediaKeywords.some(ext => lowerUrl.includes(ext));
 
   const isTypeMatch = type.startsWith('video/') || 
@@ -193,12 +194,14 @@ function isMediaUrl(url, contentType = '') {
                       type.includes('dash+xml') ||
                       type.includes('application/x-mpegurl');
 
+  const isOctetStream = (type.includes('octet-stream') || type === '') && (lowerUrl.includes('m3u8') || lowerUrl.includes('master') || lowerUrl.includes('playlist') || lowerUrl.includes('manifest'));
+
   const isIgnored = cleanUrl.endsWith('.js') || cleanUrl.endsWith('.css') || cleanUrl.endsWith('.png') || 
                     cleanUrl.endsWith('.jpg') || cleanUrl.endsWith('.jpeg') || cleanUrl.endsWith('.gif') || 
                     cleanUrl.endsWith('.svg') || cleanUrl.endsWith('.vtt') || cleanUrl.endsWith('.srt') ||
                     cleanUrl.endsWith('.ico') || cleanUrl.endsWith('.woff') || cleanUrl.endsWith('.woff2') || cleanUrl.endsWith('.ttf');
 
-  return (isExtensionMatch || isTypeMatch) && !isIgnored;
+  return (isExtensionMatch || isTypeMatch || isOctetStream) && !isIgnored;
 }
 
 function addTabMedia(tabId, mediaInfo) {
@@ -280,7 +283,7 @@ chrome.webRequest.onHeadersReceived.addListener(
           contentType: contentType,
           contentLength: contentLength,
           formattedSize: formatBytes(contentLength),
-          isHLS: format.includes('HLS') || details.url.toLowerCase().includes('.m3u8'),
+          isHLS: format.includes('HLS') || details.url.toLowerCase().includes('.m3u8') || details.url.toLowerCase().includes('m3u8'),
           isDASH: format.includes('DASH') || details.url.toLowerCase().includes('.mpd'),
           referer: capturedReferer || (tab ? tab.url : ''),
           thumbnail: null,
@@ -342,7 +345,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           contentType: message.media.type || '',
           contentLength: 0,
           formattedSize: 'DOM Video',
-          isHLS: message.media.url.toLowerCase().includes('.m3u8'),
+          isHLS: message.media.url.toLowerCase().includes('.m3u8') || message.media.url.toLowerCase().includes('m3u8'),
           isDASH: message.media.url.toLowerCase().includes('.mpd'),
           referer: capturedReferer,
           thumbnail: message.media.thumbnail || null,

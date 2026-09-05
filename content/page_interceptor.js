@@ -1,4 +1,4 @@
-// VidEmbed Page Context Interceptor - Hook XHR, Fetch & Media Elements for media streams
+// VidEmbed Page Context Interceptor - Hook XHR, Fetch & Response Body for #EXTM3U Playlists
 
 (function () {
   if (window.__VIDEMBED_INTERCEPTOR_LOADED__) return;
@@ -10,22 +10,33 @@
     return;
   }
 
+  function notifyStreamUrl(url) {
+    if (!url || typeof url !== 'string') return;
+    if (url.startsWith('blob:') || url.startsWith('data:')) return;
+    window.postMessage({ type: 'VIDEMBED_STREAM_DETECTED', url: url }, '*');
+  }
+
   function checkUrlAndNotify(url) {
     if (!url || typeof url !== 'string') return;
     const lower = url.toLowerCase();
-    if (lower.includes('.m3u8') || lower.includes('.mpd') || lower.includes('.mp4') || lower.includes('.webm') || lower.includes('m3u8') || lower.includes('manifest')) {
-      window.postMessage({ type: 'VIDEMBED_STREAM_DETECTED', url: url }, '*');
+    if (lower.includes('.m3u8') || lower.includes('.mpd') || lower.includes('.mp4') || lower.includes('.webm') || lower.includes('m3u8') || lower.includes('manifest') || lower.includes('master') || lower.includes('playlist')) {
+      notifyStreamUrl(url);
     }
   }
 
-  function checkTextAndNotify(text) {
+  function checkTextAndNotify(text, reqUrl) {
     if (!text || typeof text !== 'string') return;
+
+    // 1. If response body contains #EXTM3U or <MPD, the request URL itself is an HLS/DASH playlist!
+    if (text.includes('#EXTM3U') || text.includes('<MPD')) {
+      if (reqUrl) notifyStreamUrl(reqUrl);
+    }
+
+    // 2. Extract embedded http(s) URLs pointing to m3u8, mpd, or mp4
     try {
       const matches = text.match(/https?:\/\/[^\s"'<>]+(?:\.m3u8|\.mpd|\.mp4)[^\s"'<>]*/gi);
       if (matches) {
-        matches.forEach(m => {
-          window.postMessage({ type: 'VIDEMBED_STREAM_DETECTED', url: m }, '*');
-        });
+        matches.forEach(m => notifyStreamUrl(m));
       }
     } catch (e) {}
   }
@@ -59,7 +70,8 @@
       promise.then(response => {
         try {
           const clone = response.clone();
-          clone.text().then(text => checkTextAndNotify(text)).catch(() => {});
+          const targetReqUrl = response.url || url;
+          clone.text().then(text => checkTextAndNotify(text, targetReqUrl)).catch(() => {});
         } catch (e) {}
       }).catch(() => {});
 
@@ -71,6 +83,7 @@
   const origOpen = XMLHttpRequest.prototype.open;
   if (origOpen) {
     XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+      this.__vidembed_url = url;
       checkUrlAndNotify(url);
       return origOpen.apply(this, [method, url, ...rest]);
     };
@@ -81,7 +94,8 @@
         this.addEventListener('load', function () {
           try {
             if (this.responseText) {
-              checkTextAndNotify(this.responseText);
+              const reqUrl = this.responseURL || this.__vidembed_url;
+              checkTextAndNotify(this.responseText, reqUrl);
             }
           } catch (e) {}
         });
