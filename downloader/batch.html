@@ -33,12 +33,24 @@
 
     <!-- Main Workspace -->
     <main class="batch-workspace">
-      <!-- URL Range Generator Card -->
+      <!-- Target Video Element & URL Range Generator Card -->
       <section class="card status-card">
         <div style="display: flex; flex-direction: column; gap: 12px;">
-          <h3 style="font-size: 14px; font-weight: 700; color: #fff;">⚡ Auto-Generate Episode Range (URL Pattern)</h3>
+          <h3 style="font-size: 14px; font-weight: 700; color: #fff;">1. Target Video Player & Episode Generator</h3>
           
-          <div class="generator-grid">
+          <!-- Target Element Selector -->
+          <div style="display: flex; gap: 10px; align-items: flex-end;">
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Target Video Container / iFrame Selector</label>
+              <input type="text" id="inputVideoSelector" style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px; color: #fff; font-size: 12px; outline: none;" placeholder="e.g. iframe, video, #player, .player-container" value="iframe, video, #player, .player-wrapper">
+            </div>
+            <button id="btnPickElement" class="btn btn-secondary" style="height: 35px;" title="Point and click on web page to select exact video player container">
+              🎯 Pick Video Element
+            </button>
+          </div>
+
+          <!-- URL Range Generator -->
+          <div class="generator-grid" style="margin-top: 6px;">
             <div style="flex: 2; display: flex; flex-direction: column; gap: 4px;">
               <label style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">URL Pattern (use ${page})</label>
               <input type="text" id="inputUrlPattern" style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px; color: #fff; font-size: 12px; outline: none;" placeholder="e.g. https://www.mioz-anime.com/episode/higurashi-no-naku-koro-ni-kai-ep-${page}">
@@ -76,7 +88,7 @@
           <div style="display: flex; justify-content: flex-end;">
             <button id="btnDetectStreams" class="btn btn-secondary">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-              Auto-Detect Video Streams
+              Auto-Detect Targeted Video Streams
             </button>
           </div>
         </div>

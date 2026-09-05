@@ -1,4 +1,4 @@
-// VidEmbed Content Script - Enhanced DOM Media & Thumbnail Sniffer
+// VidEmbed Content Script - Enhanced DOM Media, Thumbnail Sniffer & Video Element Picker
 
 (function () {
   // Never interfere with YouTube
@@ -8,6 +8,95 @@
   }
 
   const detectedUrls = new Map();
+  let pickerActive = false;
+  let hoverOverlay = null;
+
+  function createHoverOverlay() {
+    if (hoverOverlay) return;
+    hoverOverlay = document.createElement('div');
+    hoverOverlay.style.position = 'fixed';
+    hoverOverlay.style.pointerEvents = 'none';
+    hoverOverlay.style.zIndex = '9999999';
+    hoverOverlay.style.border = '3px solid #818cf8';
+    hoverOverlay.style.background = 'rgba(99, 102, 241, 0.15)';
+    hoverOverlay.style.borderRadius = '4px';
+    hoverOverlay.style.transition = 'all 0.1s ease';
+    hoverOverlay.style.display = 'none';
+    document.body.appendChild(hoverOverlay);
+  }
+
+  function getCssSelector(el) {
+    if (!el) return '';
+    if (el.id) return `#${el.id}`;
+    if (el.className && typeof el.className === 'string') {
+      const classes = el.className.split(/\s+/).filter(c => c && !c.startsWith('vidembed')).join('.');
+      if (classes) return `${el.tagName.toLowerCase()}.${classes}`;
+    }
+    return el.tagName.toLowerCase();
+  }
+
+  function handlePickerMouseMove(e) {
+    if (!pickerActive) return;
+    const target = document.elementFromPoint(e.clientX, e.clientY);
+    if (!target || target === hoverOverlay) return;
+
+    createHoverOverlay();
+    const rect = target.getBoundingClientRect();
+    hoverOverlay.style.top = `${rect.top}px`;
+    hoverOverlay.style.left = `${rect.left}px`;
+    hoverOverlay.style.width = `${rect.width}px`;
+    hoverOverlay.style.height = `${rect.height}px`;
+    hoverOverlay.style.display = 'block';
+  }
+
+  function handlePickerClick(e) {
+    if (!pickerActive) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const target = e.target;
+    const selector = getCssSelector(target);
+
+    stopPicker();
+
+    try {
+      chrome.runtime.sendMessage({
+        action: 'VIDEO_ELEMENT_PICKED',
+        selector: selector,
+        tagName: target.tagName,
+        src: target.src || target.getAttribute('src') || ''
+      });
+    } catch (err) {}
+  }
+
+  function startPicker() {
+    pickerActive = true;
+    createHoverOverlay();
+    document.addEventListener('mousemove', handlePickerMouseMove, true);
+    document.addEventListener('click', handlePickerClick, true);
+  }
+
+  function stopPicker() {
+    pickerActive = false;
+    if (hoverOverlay) {
+      hoverOverlay.style.display = 'none';
+    }
+    document.removeEventListener('mousemove', handlePickerMouseMove, true);
+    document.removeEventListener('click', handlePickerClick, true);
+  }
+
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.action === 'START_VIDEO_ELEMENT_PICKER') {
+      startPicker();
+      sendResponse({ status: 'picker_started' });
+      return true;
+    }
+    if (msg.action === 'STOP_VIDEO_ELEMENT_PICKER') {
+      stopPicker();
+      sendResponse({ status: 'picker_stopped' });
+      return true;
+    }
+  });
 
   function captureFrame(videoEl) {
     try {

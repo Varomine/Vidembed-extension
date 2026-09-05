@@ -1,6 +1,9 @@
-// VidEmbed Batch Video Downloader JS Engine - Range Generator & Auto-Detector
+// VidEmbed Batch Video Downloader JS Engine - Targeted Element Picker & Range Generator
 
 document.addEventListener('DOMContentLoaded', () => {
+  const inputVideoSelector = document.getElementById('inputVideoSelector');
+  const btnPickElement = document.getElementById('btnPickElement');
+
   const inputUrlPattern = document.getElementById('inputUrlPattern');
   const inputStartPage = document.getElementById('inputStartPage');
   const inputEndPage = document.getElementById('inputEndPage');
@@ -19,7 +22,25 @@ document.addEventListener('DOMContentLoaded', () => {
   let detectedItems = [];
   let isDownloadingBatch = false;
 
-  // 1. Generate Episode Links from URL Pattern (${page})
+  // 1. Point & Click Element Picker
+  btnPickElement.addEventListener('click', () => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs && tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, { action: 'START_VIDEO_ELEMENT_PICKER' }, (resp) => {
+          alert('🎯 Click on the video player on your web page to select it!');
+        });
+      }
+    });
+  });
+
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.action === 'VIDEO_ELEMENT_PICKED' && msg.selector) {
+      inputVideoSelector.value = msg.selector;
+      alert(`✅ Selected Video Container: "${msg.selector}"`);
+    }
+  });
+
+  // 2. Generate Episode Links from URL Pattern (${page})
   btnGenerateLinks.addEventListener('click', () => {
     let pattern = inputUrlPattern.value.trim();
     const start = parseInt(inputStartPage.value, 10) || 1;
@@ -51,7 +72,6 @@ document.addEventListener('DOMContentLoaded', () => {
     startAutoDetection();
   });
 
-  // Read URLs on manual textarea input change
   urlInputText.addEventListener('input', () => {
     const lines = parseUrlsFromInput();
     txtUrlCount.textContent = `${lines.length} URL${lines.length !== 1 ? 's' : ''} entered`;
@@ -62,7 +82,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 5 && (l.startsWith('http://') || l.startsWith('https://')));
   }
 
-  // Parse hash / storage queue if passed from popup
   function initFromStorage() {
     const hash = window.location.hash.substring(1);
     const params = new URLSearchParams(hash);
@@ -97,6 +116,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const targetSelector = inputVideoSelector.value.trim();
+
     detectedItems = urls.map((url, idx) => ({
       id: idx + 1,
       title: extractTitleFromUrl(url, idx + 1),
@@ -112,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
     for (let i = 0; i < detectedItems.length; i++) {
       const item = detectedItems[i];
       try {
-        const info = await scanPageForStream(item.pageUrl);
+        const info = await scanPageForStream(item.pageUrl, targetSelector);
         item.streamUrl = info.url;
         item.format = info.format;
         item.referer = item.pageUrl;
@@ -126,11 +147,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function scanPageForStream(pageUrl) {
+  async function scanPageForStream(pageUrl, targetSelector) {
     return new Promise((resolve) => {
       let done = false;
 
       fetch(pageUrl).then(r => r.text()).then(html => {
+        // Target specifically inside selected element if possible
+        if (targetSelector && html.includes(targetSelector.replace(/[.#]/g, ''))) {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          const targetNode = doc.querySelector(targetSelector);
+          if (targetNode) {
+            const nodeSrc = targetNode.src || targetNode.getAttribute('src') || targetNode.getAttribute('data-src');
+            if (nodeSrc) {
+              done = true;
+              let fullUrl = nodeSrc;
+              try { fullUrl = new URL(nodeSrc, pageUrl).href; } catch(e){}
+              let format = fullUrl.includes('.mpd') ? 'DASH' : (fullUrl.includes('.mp4') ? 'MP4' : 'HLS');
+              return resolve({ url: fullUrl, format });
+            }
+          }
+        }
+
+        // Regex fallback
         const matches = html.match(/https?:\/\/[^\s"'<>]+(?:\.m3u8|\.mpd|\.mp4)[^\s"'<>]*/gi);
         if (matches && matches.length > 0) {
           done = true;
