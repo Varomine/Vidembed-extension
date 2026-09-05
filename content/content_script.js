@@ -23,9 +23,14 @@
     }
   }
 
-  function reportMedia(url, type = '', videoEl = null) {
-    if (!url || typeof url !== 'string') return;
-    if (url.startsWith('blob:') || url.startsWith('data:')) return;
+  function reportMedia(rawUrl, type = '', videoEl = null) {
+    if (!rawUrl || typeof rawUrl !== 'string') return;
+    if (rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')) return;
+
+    let url = rawUrl;
+    try {
+      url = new URL(rawUrl, window.location.href).href;
+    } catch (e) {}
 
     const lower = url.toLowerCase();
     if (lower.endsWith('.js') || lower.endsWith('.css') || lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.gif') || lower.endsWith('.svg')) {

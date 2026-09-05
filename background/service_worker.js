@@ -1,4 +1,4 @@
-// VidEmbed Background Service Worker - Non-Intrusive Sniffer & YouTube Exclusion
+// VidEmbed Background Service Worker - Non-Intrusive Sniffer & Targeted Downloader Rules
 
 const tabMediaMap = new Map();
 const urlRefererMap = new Map();
@@ -135,10 +135,10 @@ function getMediaFormat(url, contentType = '') {
   const cleanUrl = url.toLowerCase().split('?')[0];
   const type = contentType.toLowerCase();
 
-  if (cleanUrl.endsWith('.m3u8') || type.includes('mpegurl') || type.includes('apple.mpegurl')) {
+  if (cleanUrl.endsWith('.m3u8') || url.toLowerCase().includes('.m3u8') || type.includes('mpegurl') || type.includes('apple.mpegurl')) {
     return 'HLS';
   }
-  if (cleanUrl.endsWith('.mpd') || type.includes('dash+xml')) {
+  if (cleanUrl.endsWith('.mpd') || url.toLowerCase().includes('.mpd') || type.includes('dash+xml')) {
     return 'DASH';
   }
   if (cleanUrl.endsWith('.mp4') || type.includes('video/mp4')) {
@@ -169,7 +169,8 @@ function getMediaFormat(url, contentType = '') {
 function isMediaUrl(url, contentType = '') {
   if (!url || url.startsWith('blob:') || url.startsWith('data:')) return false;
 
-  const lowerUrl = url.toLowerCase().split('?')[0];
+  const lowerUrl = url.toLowerCase();
+  const cleanUrl = lowerUrl.split('?')[0];
   const type = contentType.toLowerCase();
 
   // Exclude YouTube and GoogleVideo completely
@@ -177,23 +178,25 @@ function isMediaUrl(url, contentType = '') {
     return false;
   }
 
-  const isBlocked = blockedExtensions.some(ext => lowerUrl.endsWith(ext.toLowerCase()));
-  if (isBlocked && !lowerUrl.endsWith('.m3u8')) {
+  const isBlocked = blockedExtensions.some(ext => cleanUrl.endsWith(ext.toLowerCase()));
+  if (isBlocked && !lowerUrl.includes('.m3u8') && !lowerUrl.includes('.mpd')) {
     return false;
   }
 
-  const mediaExtensions = ['.mp4', '.m3u8', '.mpd', '.webm', '.flv', '.mov', '.m4v', '.aac', '.mp3', '.m4a', '.ts'];
-  const isExtensionMatch = mediaExtensions.some(ext => lowerUrl.endsWith(ext));
+  const mediaKeywords = ['.mp4', '.m3u8', '.mpd', '.webm', '.flv', '.mov', '.m4v', '.aac', '.mp3', '.m4a'];
+  const isExtensionMatch = mediaKeywords.some(ext => lowerUrl.includes(ext));
 
   const isTypeMatch = type.startsWith('video/') || 
                       type.startsWith('audio/') || 
                       type.includes('mpegurl') || 
                       type.includes('apple.mpegurl') || 
-                      type.includes('dash+xml');
+                      type.includes('dash+xml') ||
+                      type.includes('application/x-mpegurl');
 
-  const isIgnored = lowerUrl.endsWith('.js') || lowerUrl.endsWith('.css') || lowerUrl.endsWith('.png') || 
-                    lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg') || lowerUrl.endsWith('.gif') || 
-                    lowerUrl.endsWith('.svg') || lowerUrl.endsWith('.vtt') || lowerUrl.endsWith('.srt');
+  const isIgnored = cleanUrl.endsWith('.js') || cleanUrl.endsWith('.css') || cleanUrl.endsWith('.png') || 
+                    cleanUrl.endsWith('.jpg') || cleanUrl.endsWith('.jpeg') || cleanUrl.endsWith('.gif') || 
+                    cleanUrl.endsWith('.svg') || cleanUrl.endsWith('.vtt') || cleanUrl.endsWith('.srt') ||
+                    cleanUrl.endsWith('.ico') || cleanUrl.endsWith('.woff') || cleanUrl.endsWith('.woff2') || cleanUrl.endsWith('.ttf');
 
   return (isExtensionMatch || isTypeMatch) && !isIgnored;
 }
@@ -294,8 +297,9 @@ chrome.webRequest.onHeadersReceived.addListener(
   ['responseHeaders']
 );
 
+// ONLY clear tab media when main frame URL actually changes, NOT on subframe/iframe status loading
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'loading') {
+  if (changeInfo.url) {
     tabMediaMap.set(tabId, new Map());
     updateBadge(tabId);
   }
