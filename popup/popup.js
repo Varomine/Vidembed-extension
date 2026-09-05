@@ -1,4 +1,4 @@
-// VidEmbed Popup UI Logic - Configurable Proxy, Referer Spoofing & MP4 Downloader Routing
+// VidEmbed Popup UI Logic - Configurable Proxy, Referer Spoofing & Batch Downloader Support
 
 document.addEventListener('DOMContentLoaded', () => {
   const mediaContainer = document.getElementById('mediaContainer');
@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnRefresh = document.getElementById('btnRefresh');
   const btnClear = document.getElementById('btnClear');
   const btnOptions = document.getElementById('btnOptions');
+  const btnBatch = document.getElementById('btnBatch');
 
   const previewModal = document.getElementById('previewModal');
   const previewVideo = document.getElementById('previewVideo');
@@ -362,6 +363,47 @@ document.addEventListener('DOMContentLoaded', () => {
   btnOptions.addEventListener('click', () => {
     chrome.runtime.openOptionsPage();
   });
+
+  // Batch Series Downloader Trigger
+  if (btnBatch) {
+    btnBatch.addEventListener('click', () => {
+      if (!activeTabId) return;
+
+      chrome.scripting.executeScript({
+        target: { tabId: activeTabId },
+        func: () => {
+          const links = Array.from(document.querySelectorAll('a[href]'));
+          const epLinks = [];
+          const seen = new Set();
+
+          links.forEach(a => {
+            const href = a.href;
+            const text = a.textContent.trim() || a.title || 'Episode';
+            const lower = href.toLowerCase();
+
+            if (lower.includes('/episode/') || lower.includes('/watch/') || lower.includes('ep-') || lower.includes('episode')) {
+              if (!seen.has(href)) {
+                seen.add(href);
+                epLinks.push({ title: text, url: href });
+              }
+            }
+          });
+
+          return epLinks;
+        }
+      }, (results) => {
+        let queue = [];
+        if (results && results[0] && results[0].result) {
+          queue = results[0].result;
+        }
+
+        chrome.storage.local.set({ batchQueue: queue }, () => {
+          const batchTabUrl = chrome.runtime.getURL(`downloader/batch.html#data=${encodeURIComponent(JSON.stringify(queue))}`);
+          chrome.tabs.create({ url: batchTabUrl });
+        });
+      });
+    });
+  }
 
   function escapeHtml(str) {
     if (!str) return '';

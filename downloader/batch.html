@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VidEmbed - Batch Series & Episode Downloader</title>
+  <link rel="stylesheet" href="batch.css">
+</head>
+<body>
+  <div class="batch-app">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <polygon points="23 7 16 12 23 17 23 7"></polygon>
+            <rect x="1" y="5" width="15" height="14" rx="3" ry="3"></rect>
+            <path d="M10 9.5l3.5 2.5-3.5 2.5v-5z" fill="currentColor"></path>
+          </svg>
+        </div>
+        <div>
+          <h2>VidEmbed Batch Downloader</h2>
+          <span class="sub-heading">Auto-Extract & Batch Download All Episodes as MP4</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btnStartBatch" class="btn btn-primary" disabled>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Start Batch Download (.MP4)
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="batch-workspace">
+      <!-- Status Card -->
+      <section class="card status-card">
+        <div class="status-summary">
+          <div>
+            <h3 id="txtBatchTitle">Extracting Series Episodes...</h3>
+            <p id="txtBatchSub">Auto-scanning episode pages for MP4 & HLS video streams.</p>
+          </div>
+          <div class="stats-pills">
+            <span class="pill pill-info" id="pillTotalCount">0 Episodes Found</span>
+            <span class="pill pill-success" id="pillReadyCount">0 Ready to Download</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Episode List Table -->
+      <section class="card table-card">
+        <div class="table-header">
+          <div class="flex-between">
+            <div class="left-controls">
+              <label class="checkbox-label">
+                <input type="checkbox" id="chkSelectAll" checked>
+                <span>Select All Episodes</span>
+              </label>
+            </div>
+            <div class="right-controls">
+              <button id="btnExtractAll" class="btn-sm btn-secondary">Re-Scan Streams</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="batch-table">
+            <thead>
+              <tr>
+                <th width="40"><input type="checkbox" id="chkHeaderCheck" checked></th>
+                <th>Episode Name / Title</th>
+                <th>Page Link</th>
+                <th>Stream Format</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="episodesTableBody">
+              <!-- Dynamic Episode Rows -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <iframe id="extractorFrame" style="display:none; width:0; height:0;"></iframe>
+
+  <script src="../lib/hls_parser.js"></script>
+  <script src="../lib/dash_parser.js"></script>
+  <script src="../lib/mp4_stitcher.js"></script>
+  <script src="batch.js"></script>
+</body>
+</html>
