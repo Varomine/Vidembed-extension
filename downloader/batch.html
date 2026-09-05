@@ -20,7 +20,7 @@
         </div>
         <div>
           <h2>VidEmbed Batch Downloader</h2>
-          <span class="sub-heading">Paste Episode / Video URLs & Auto-Extract MP4 Streams</span>
+          <span class="sub-heading">Auto-Generate Episode Links & Batch Download MP4s</span>
         </div>
       </div>
       <div class="header-actions">
@@ -33,13 +33,47 @@
 
     <!-- Main Workspace -->
     <main class="batch-workspace">
+      <!-- URL Range Generator Card -->
+      <section class="card status-card">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <h3 style="font-size: 14px; font-weight: 700; color: #fff;">⚡ Auto-Generate Episode Range (URL Pattern)</h3>
+          
+          <div class="generator-grid">
+            <div style="flex: 2; display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">URL Pattern (use ${page})</label>
+              <input type="text" id="inputUrlPattern" style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px; color: #fff; font-size: 12px; outline: none;" placeholder="e.g. https://www.mioz-anime.com/episode/higurashi-no-naku-koro-ni-kai-ep-${page}">
+            </div>
+
+            <div style="flex: 0.5; display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">First Ep</label>
+              <input type="number" id="inputStartPage" value="1" min="1" style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 12px; outline: none;">
+            </div>
+
+            <div style="flex: 0.5; display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Last Ep</label>
+              <input type="number" id="inputEndPage" value="24" min="1" style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 12px; outline: none;">
+            </div>
+
+            <div style="display: flex; align-items: flex-end;">
+              <button id="btnGenerateLinks" class="btn btn-secondary" style="height: 35px;">
+                ⚡ Generate URLs
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Input URL Box Card -->
       <section class="card status-card">
         <div style="display: flex; flex-direction: column; gap: 10px;">
-          <h3 style="font-size: 14px; font-weight: 700; color: #fff;">1. Paste Video / Episode URLs (One per line)</h3>
-          <textarea id="urlInputText" rows="5" style="width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; color: #f8fafc; font-family: monospace; font-size: 12px; outline: none;" placeholder="Paste video episode URLs here (e.g.):&#10;https://www.mioz-anime.com/episode/higurashi-no-naku-koro-ni-kai-ep-1&#10;https://www.mioz-anime.com/episode/higurashi-no-naku-koro-ni-kai-ep-2&#10;https://www.mioz-anime.com/episode/higurashi-no-naku-koro-ni-kai-ep-3"></textarea>
           <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="font-size: 14px; font-weight: 700; color: #fff;">Episode URLs List</h3>
             <span id="txtUrlCount" style="font-size: 12px; color: #94a3b8;">0 URLs entered</span>
+          </div>
+
+          <textarea id="urlInputText" rows="6" style="width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; color: #f8fafc; font-family: monospace; font-size: 12px; outline: none;" placeholder="Generated or pasted episode URLs will appear here..."></textarea>
+          
+          <div style="display: flex; justify-content: flex-end;">
             <button id="btnDetectStreams" class="btn btn-secondary">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
               Auto-Detect Video Streams

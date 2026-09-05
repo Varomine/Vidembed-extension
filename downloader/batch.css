@@ -102,6 +102,19 @@ body {
   padding: 20px;
 }
 
+.generator-grid {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+@media (max-width: 768px) {
+  .generator-grid {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 .status-summary {
   display: flex;
   align-items: center;

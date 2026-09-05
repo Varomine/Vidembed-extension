@@ -1,6 +1,11 @@
-// VidEmbed Batch Video Downloader JS Engine
+// VidEmbed Batch Video Downloader JS Engine - Range Generator & Auto-Detector
 
 document.addEventListener('DOMContentLoaded', () => {
+  const inputUrlPattern = document.getElementById('inputUrlPattern');
+  const inputStartPage = document.getElementById('inputStartPage');
+  const inputEndPage = document.getElementById('inputEndPage');
+  const btnGenerateLinks = document.getElementById('btnGenerateLinks');
+
   const urlInputText = document.getElementById('urlInputText');
   const txtUrlCount = document.getElementById('txtUrlCount');
   const btnDetectStreams = document.getElementById('btnDetectStreams');
@@ -14,7 +19,39 @@ document.addEventListener('DOMContentLoaded', () => {
   let detectedItems = [];
   let isDownloadingBatch = false;
 
-  // Read URLs on input change
+  // 1. Generate Episode Links from URL Pattern (${page})
+  btnGenerateLinks.addEventListener('click', () => {
+    let pattern = inputUrlPattern.value.trim();
+    const start = parseInt(inputStartPage.value, 10) || 1;
+    const end = parseInt(inputEndPage.value, 10) || 1;
+
+    if (!pattern) {
+      alert('Please enter a URL pattern containing ${page}.\n\nExample:\nhttps://www.mioz-anime.com/episode/higurashi-no-naku-koro-ni-kai-ep-${page}');
+      return;
+    }
+
+    if (!pattern.includes('${page}') && !pattern.includes('$page') && !pattern.includes('{page}')) {
+      pattern = pattern + '${page}';
+    }
+
+    if (start > end) {
+      alert('First Episode number must be less than or equal to Last Episode number.');
+      return;
+    }
+
+    const generatedUrls = [];
+    for (let i = start; i <= end; i++) {
+      const url = pattern.replace(/\$\{page\}|\$page|\{page\}/gi, i);
+      generatedUrls.push(url);
+    }
+
+    urlInputText.value = generatedUrls.join('\n');
+    txtUrlCount.textContent = `${generatedUrls.length} URLs generated`;
+
+    startAutoDetection();
+  });
+
+  // Read URLs on manual textarea input change
   urlInputText.addEventListener('input', () => {
     const lines = parseUrlsFromInput();
     txtUrlCount.textContent = `${lines.length} URL${lines.length !== 1 ? 's' : ''} entered`;
@@ -56,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function startAutoDetection() {
     const urls = parseUrlsFromInput();
     if (urls.length === 0) {
-      alert('Please paste at least one video episode URL into the box.');
+      alert('Please paste or generate episode URLs first.');
       return;
     }
 
