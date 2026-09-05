@@ -1,4 +1,4 @@
-// VidEmbed Popup UI Logic - Configurable Proxy, Referer Spoofing & Sandbox Support
+// VidEmbed Popup UI Logic - Configurable Proxy, Referer Spoofing & MP4 Downloader Routing
 
 document.addEventListener('DOMContentLoaded', () => {
   const mediaContainer = document.getElementById('mediaContainer');
@@ -22,7 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let allMediaItems = [];
   let currentHlsInstance = null;
 
-  // Active Preview State
   let activePreviewUrl = '';
   let activePreviewTitle = '';
   let activePreviewIsHLS = false;
@@ -94,12 +93,14 @@ document.addEventListener('DOMContentLoaded', () => {
       card.className = 'media-card';
 
       let badgeClass = 'mp4';
-      if (item.isHLS) badgeClass = 'hls';
+      if (item.isHLS || item.format === 'HLS') badgeClass = 'hls';
+      else if (item.isDASH || item.format === 'DASH') badgeClass = 'hls';
       else if (item.format.includes('WEBM')) badgeClass = 'webm';
       else if (item.format === 'TS') badgeClass = 'ts';
       else if (item.format.includes('MP3') || item.format.includes('AAC')) badgeClass = 'audio';
 
-      const isHLSStream = item.isHLS || item.url.includes('.m3u8');
+      const lowerUrl = item.url.toLowerCase();
+      const isStreamMedia = item.isHLS || item.isDASH || item.format === 'HLS' || item.format === 'DASH' || item.format === 'Stream' || lowerUrl.includes('m3u8') || lowerUrl.includes('mpd') || lowerUrl.includes('manifest') || lowerUrl.includes('playlist');
       const durationText = item.formattedDuration || (item.duration ? formatDuration(item.duration) : '');
 
       card.innerHTML = `
@@ -150,25 +151,14 @@ document.addEventListener('DOMContentLoaded', () => {
             </svg>
             Copy URL
           </button>
-          ${isHLSStream ? `
-            <button class="btn-action btn-hls" title="Download HLS Stream as MP4">
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              Download HLS
-            </button>
-          ` : `
-            <button class="btn-action btn-download" title="Download Media File">
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              Download
-            </button>
-          `}
+          <button class="btn-action ${isStreamMedia ? 'btn-hls' : 'btn-download'}" title="Download Video as MP4">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Download MP4
+          </button>
         </div>
       `;
 
@@ -210,31 +200,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const previewBtn = card.querySelector('.btn-preview');
       previewBtn.addEventListener('click', () => {
-        openPreviewModal(item.url, item.title, isHLSStream, item.referer);
+        openPreviewModal(item.url, item.title, isStreamMedia, item.referer);
       });
 
-      if (isHLSStream) {
-        const hlsBtn = card.querySelector('.btn-hls');
-        hlsBtn.addEventListener('click', () => {
+      const dlBtn = card.querySelector('.btn-action:last-child');
+      dlBtn.addEventListener('click', () => {
+        if (isStreamMedia) {
           chrome.runtime.sendMessage({
             action: 'OPEN_DOWNLOADER',
             url: item.url,
             title: item.title,
             referer: item.referer || ''
           });
-        });
-      } else {
-        const dlBtn = card.querySelector('.btn-download');
-        dlBtn.addEventListener('click', () => {
+        } else {
           chrome.runtime.sendMessage({
             action: 'DOWNLOAD_FILE',
             url: item.url,
             filename: item.filename,
-            ext: item.format.toLowerCase(),
+            ext: 'mp4',
             referer: item.referer || ''
           });
-        });
-      }
+        }
+      });
 
       mediaContainer.appendChild(card);
     });

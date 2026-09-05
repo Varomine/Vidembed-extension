@@ -402,9 +402,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       applyRefererRule(message.referer);
     }
 
+    let ext = (message.ext || 'mp4').toLowerCase();
+    if (ext === 'txt' || ext === 'm3u8' || ext === 'hls' || ext === 'dash' || ext === 'stream' || ext === 'html' || ext === 'unknown') {
+      ext = 'mp4';
+    }
+
+    const cleanFilename = sanitizeFilename(message.filename || 'video');
+    const finalFilename = cleanFilename.endsWith(`.${ext}`) ? cleanFilename : `${cleanFilename}.${ext}`;
+
     chrome.downloads.download({
       url: message.url,
-      filename: sanitizeFilename(message.filename || 'video') + (message.ext ? `.${message.ext}` : '.mp4'),
+      filename: finalFilename,
       saveAs: true
     }, (downloadId) => {
       sendResponse({ downloadId, error: chrome.runtime.lastError ? chrome.runtime.lastError.message : null });
